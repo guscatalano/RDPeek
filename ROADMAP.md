@@ -79,6 +79,25 @@ frames — without leaving the tool.
 
 ---
 
+## M2 — "the RDPeek companion app (no embedded RDP)"
+
+Goal: keep plain `mstsc.exe` + the DVC plugin; add a native client-side **companion
+app** (WPF/WinForms, cohesive with the .NET solution) that is both the dashboard/
+viewer and the bootstrap helper. No RDP-control hosting (`mstscax`) — the companion
+drives the existing mstsc window from outside via Win32 input injection.
+
+| Item | Why | Notes |
+|---|---|---|
+| **Companion app + pipe link** | UI without hosting RDP | Connects to the plugin/broker over the local named pipe; shows connection state, roster, host header, log. Multi-connection per §5.6. |
+| **One-click agent bootstrap** | "Server-side host not detected — copy & run?" | Plugin detects no `OnNewChannelConnection`; companion offers the button. On click: set clipboard to the bootstrap command, `SetForegroundWindow(mstsc)` → `SendInput` **Win+R** → **Ctrl+V** → **Enter** (paste via CLIPRDR is far more reliable than typing). Command copies `\\tsclient\…\rdpeek-agent.exe` to remote `%TEMP%` and runs `serve`. Verify RDPDR + CLIPRDR via the client roster first; save/restore clipboard; best-effort focus. Operator-initiated automation of one's own authorized session — not remote-exec. |
+| **Live dashboard** | The payoff | Host header, channel roster (client ‖ host), processes, transfers, log — over the pipe from the plugin. |
+
+Trade-off vs. an embedded RDP control: input injection is more focus/timing/window-
+targeting sensitive, but hosts nothing and keeps the user's normal mstsc.
+Prereq: a trimmed/ReadyToRun agent publish to shrink the 65 MB self-contained exe.
+
+---
+
 ## Later — "dev-first power tools"
 
 Goal: turn it from an inspector into a full DVC development workbench. Each is
