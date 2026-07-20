@@ -36,8 +36,9 @@ Early. What exists and is verified today:
 |---|---|
 | `Rdpeek.Protocol` — framing codec + envelope router | ✅ done (unit + conformance tested) |
 | `rdpeek-doctor` — plugin registration diagnostician | ✅ done (verified against the live registry) |
-| `Rdpeek.Agent` — SysInfo + process collectors, agent core | ✅ collectors verified live; DVC transport is next |
-| Client COM plugin, viewer, counters, file transport | ⬜ not yet |
+| `Rdpeek.Agent` — SysInfo + process collectors, agent core | ✅ collectors verified live; `serve` DVC transport built |
+| `Rdpeek.Plugin` — client COM plugin (`IWTSPlugin`, LocalServer32) | ✅ built; COM activation + `IWTSPlugin` verified; live DVC round-trip pending an RDP session |
+| Viewer, per-DVC counters, file transport | ⬜ not yet |
 
 The per-DVC **performance counters** RDPeek will consume are not yet released in
 Windows (expected ~2026); the agent runtime-detects them and lights up the

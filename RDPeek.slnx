@@ -2,6 +2,9 @@
   <Folder Name="/src/">
     <Project Path="src/Rdpeek.Agent/Rdpeek.Agent.csproj" />
     <Project Path="src/Rdpeek.Doctor/Rdpeek.Doctor.csproj" />
+    <Project Path="src/Rdpeek.Plugin/Rdpeek.Plugin.csproj">
+      <Platform Project="x64" />
+    </Project>
     <Project Path="src/Rdpeek.Protocol/Rdpeek.Protocol.csproj" />
   </Folder>
   <Folder Name="/tests/">

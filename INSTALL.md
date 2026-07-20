@@ -65,8 +65,8 @@ disconnect/reconnect.
 
 ## Register the client plugin
 
-> The client COM plugin binary isn't built yet. Once it is, register it on the
-> **client** machine (the one running `mstsc`) so the RDP client loads it:
+Register `rdpeek-plugin.exe` on the **client** machine (the one running `mstsc`) so
+the RDP client loads it:
 
 ```powershell
 tools\register.ps1 -ExePath C:\Tools\RDPeek\rdpeek-plugin.exe
@@ -75,7 +75,23 @@ rdpeek-doctor          # verify it resolves and activates
 
 This writes a per-user (HKCU) `LocalServer32` CLSID and a Terminal Server Client
 `AddIns\RDPeek` entry — no admin rights required. Start or reconnect an RDP session
-for `mstsc` to pick up the plugin.
+for `mstsc` to pick up the plugin. After connecting, check the plugin log:
+
+```powershell
+Get-Content $env:TEMP\rdpeek-plugin.log
+```
+
+You should see the plugin initialize, the channel connect, and the remote host
+snapshot it pulled from the agent.
+
+> **HKCU vs machine-wide.** `mstsc` (interactive session) activates a per-user
+> plugin fine. But `rdpeek-doctor`'s standalone activation probe **cannot**
+> auto-launch a per-user `LocalServer32` — it reports a WARN explaining this, not a
+> failure. To make Doctor's probe show a full PASS, register machine-wide from an
+> **elevated** shell:
+> ```powershell
+> tools\register.ps1 -ExePath C:\Tools\RDPeek\rdpeek-plugin.exe -Machine
+> ```
 
 ## Uninstall
 

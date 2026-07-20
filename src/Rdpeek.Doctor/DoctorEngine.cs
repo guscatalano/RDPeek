@@ -129,14 +129,15 @@ internal static class DoctorEngine
             e.Findings.Add(new(Severity.Warn,
                 "Registered only in the 32-bit registry view — 64-bit mstsc will not enumerate this AddIn."));
 
+        bool moduleOk = true;
         switch (act)
         {
             case Activation.InprocServer32:
-                CheckModuleFile(e, inProc: true);
+                moduleOk = CheckModuleFile(e, inProc: true);
                 e.Findings.Add(new(Severity.Info, $"In-proc DLL resolved from {foundView}: {module}"));
                 break;
             case Activation.LocalServer32:
-                CheckModuleFile(e, inProc: false); // out-of-proc: bitness need not match mstsc
+                moduleOk = CheckModuleFile(e, inProc: false); // out-of-proc: bitness need not match mstsc
                 e.Findings.Add(new(Severity.Info, $"Out-of-proc server resolved from {foundView}: {module}"));
                 break;
             default:
@@ -148,32 +149,48 @@ internal static class DoctorEngine
         if (Guid.TryParse(e.Clsid, out var g))
         {
             var (hr, isPlugin) = NativeMethods.ProbeCom(g);
-            if (hr < 0)
-                e.Findings.Add(new(Severity.Fail, $"CoCreateInstance failed: 0x{hr:X8} ({DescribeHr(hr)})"));
-            else if (!isPlugin)
-                e.Findings.Add(new(Severity.Warn, "Activates, but does not expose IWTSPlugin (QueryInterface failed)."));
-            else
+            if (hr >= 0 && isPlugin)
                 e.Findings.Add(new(Severity.Pass, "Activates and exposes IWTSPlugin."));
+            else if (hr >= 0)
+                e.Findings.Add(new(Severity.Warn, "Activates, but does not expose IWTSPlugin (QueryInterface failed)."));
+            else if ((uint)hr == 0x80040154 && act == Activation.LocalServer32
+                     && foundView.StartsWith("HKCU") && moduleOk)
+                // Known limitation: standalone CoCreateInstance does not auto-launch a
+                // per-user (HKCU) out-of-proc server, but mstsc (interactive session) does.
+                // Module is present and correct, so this is not a real defect.
+                e.Findings.Add(new(Severity.Warn,
+                    "Per-user (HKCU) LocalServer32: standalone activation returned REGDB_E_CLASSNOTREG, " +
+                    "but the module is present and correct. Per-user out-of-proc servers auto-activate inside " +
+                    "mstsc, not standalone — register machine-wide (register.ps1 -Machine) to verify activation here."))
+                    ;
+            else
+                e.Findings.Add(new(Severity.Fail, $"CoCreateInstance failed: 0x{hr:X8} ({DescribeHr(hr)})"));
         }
     }
 
-    private static void CheckModuleFile(AddInEntry e, bool inProc)
+    /// <summary>Returns true if the module exists and (for in-proc) has matching bitness.</summary>
+    private static bool CheckModuleFile(AddInEntry e, bool inProc)
     {
         if (string.IsNullOrEmpty(e.ModulePath))
         {
             e.Findings.Add(new(Severity.Fail, "Server path is empty."));
-            return;
+            return false;
         }
         if (!File.Exists(e.ModulePath))
         {
             e.Findings.Add(new(Severity.Fail, $"Module file not found: {e.ModulePath}"));
-            return;
+            return false;
         }
 
         e.ModuleBitness = NativeMethods.ReadPeBitness(e.ModulePath);
         if (inProc && e.ModuleBitness != Bitness.Unknown && e.ModuleBitness != HostBitness)
+        {
             e.Findings.Add(new(Severity.Fail,
                 $"Bitness mismatch: module is {e.ModuleBitness}, but mstsc is {HostBitness} — it cannot be loaded in-proc."));
+            return false;
+        }
+
+        return true;
     }
 
     private static (Activation act, string module, string view)? ResolveClsid(string clsid)

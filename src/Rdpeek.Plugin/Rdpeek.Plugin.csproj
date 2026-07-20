@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Rdpeek.Plugin</RootNamespace>
+    <AssemblyName>rdpeek-plugin</AssemblyName>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <!-- Built-in COM interop (CCW via CoRegisterClassObject) -->
+    <EnableComHosting>false</EnableComHosting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rdpeek.Protocol\Rdpeek.Protocol.csproj" />
+  </ItemGroup>
+
+</Project>
