@@ -22,11 +22,9 @@ switch (command)
         return 0;
 
     case "serve":
-        Console.Error.WriteLine(
-            "serve: DVC transport (WTSVirtualChannelOpenEx + session lifecycle) is not wired yet.\n" +
-            "This milestone delivers the collectors + agent core; the channel loop lands next.\n" +
-            "Run 'rdpeek-agent selftest' to exercise the collectors now.");
-        return 2;
+        // Opens the DVC channel and serves the collectors. Requires a live RDP
+        // session with the RDPeek client plugin listening on the same channel.
+        return ServeLoop.Run();
 
     default:
         Console.Error.WriteLine($"Unknown command '{command}'. Use: selftest | serve");

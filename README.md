@@ -11,8 +11,8 @@ Built on top of Microsoft's
 > **DVC** here means **Dynamic Virtual Channel** (the RDP extensibility mechanism),
 > not Data Version Control.
 
-See [`DESIGN.md`](DESIGN.md) for the architecture and [`ROADMAP.md`](ROADMAP.md)
-for phasing.
+See [`INSTALL.md`](INSTALL.md) to build/run, [`DESIGN.md`](DESIGN.md) for the
+architecture, and [`ROADMAP.md`](ROADMAP.md) for phasing.
 
 ## How it works
 
