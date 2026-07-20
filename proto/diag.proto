@@ -1,0 +1,317 @@
+syntax = "proto3";
+
+// DVC diagnostics / inspector plugin wire contract.
+//
+// Transport: RDP Dynamic Virtual Channel. Every message is written as a single
+// framed payload using the same length-prefixed scheme as the Microsoft advanced
+// sample:
+//
+//     [4-byte little-endian uint32 length][serialized Envelope bytes]
+//
+// A single frame MUST NOT exceed 16 MiB (the sample's hard cap). File data is
+// therefore chunked (see FileChunk) rather than sent as one frame.
+//
+// Channels:
+//   dvc::diag::inspector  -> control + diagnostics (everything except bulk file data)
+//   dvc::diag::files      -> bulk file transfer, isolated so a large transfer
+//                            cannot starve the live dashboard on the control channel
+//
+// Both halves speak Envelope on both channels. request_id correlates a response
+// to its request; unsolicited pushes (subscriptions) carry request_id = 0.
+
+package dvc.diag;
+
+option csharp_namespace = "Dvc.Diag.Protocol";
+
+// ============================================================================
+// Envelope
+// ============================================================================
+
+// The one type every frame decodes to. A single oneof keeps the receive path on
+// each channel to one Parse + one switch, regardless of message kind.
+message Envelope {
+  // Correlates a Response to its Request. 0 = unsolicited push (subscriptions).
+  uint64 request_id = 1;
+
+  // 100-ns ticks (UTC, DateTime.Ticks-compatible) stamped by the sender.
+  int64  utc_ticks = 2;
+
+  oneof body {
+    // -- handshake / negotiation --
+    Hello              hello               = 10;  // client -> agent
+    Capabilities       capabilities        = 11;  // agent  -> client
+    Error              error               = 12;  // either direction
+
+    // -- liveness / transport probe (reused from the sample's ping/echo) --
+    Ping               ping                = 20;
+
+    // -- host + session info --
+    SysInfoRequest     sysinfo_request     = 30;
+    SysInfoSnapshot    sysinfo_snapshot    = 31;
+
+    // -- per-DVC performance counters ("who's listening" + health) --
+    ChannelRosterRequest channel_roster_request = 40;
+    ChannelRoster        channel_roster        = 41;
+    CounterSubscribe     counter_subscribe     = 42;
+    CounterUnsubscribe   counter_unsubscribe   = 43;
+    CounterSample        counter_sample        = 44;  // push
+
+    // -- remote processes / sessions --
+    ProcessListRequest process_list_request = 50;
+    ProcessList        process_list         = 51;
+    ProcessAction      process_action       = 52;  // destructive, capability-gated
+
+    // -- file transfer (control lives here; bulk bytes on dvc::diag::files) --
+    FileListRequest    file_list_request   = 60;
+    FileList           file_list           = 61;
+    FileOpen           file_open           = 62;
+    FileOpenResult     file_open_result    = 63;
+    FileChunk          file_chunk          = 64;
+    FileAck            file_ack            = 65;
+    FileClose          file_close          = 66;
+  }
+}
+
+// ============================================================================
+// Handshake / capability negotiation
+// ============================================================================
+
+// Sent by the client immediately after the channel connects. Lets the two
+// halves agree on protocol version and lets the agent advertise what this build
+// is willing to do (a read-only agent simply omits the write/exec capabilities).
+message Hello {
+  uint32 protocol_version = 1;   // bump on breaking wire changes
+  string client_build     = 2;   // free-form: viewer version string
+}
+
+message Capabilities {
+  uint32 protocol_version = 1;
+  string agent_build      = 2;
+
+  // Feature flags the AGENT is compiled/configured to honor. The viewer greys
+  // out anything not advertised. This is how you ship a safe read-only build.
+  bool   sysinfo          = 10;
+  bool   counters         = 11;
+  bool   process_list     = 12;
+  bool   process_kill     = 13;  // WTSTerminateProcess
+  bool   file_pull        = 14;  // remote -> client
+  bool   file_push        = 15;  // client -> remote
+
+  // File transfer is confined to these roots (empty => file transfer disabled
+  // regardless of file_pull/file_push). Paths outside are rejected by the agent.
+  repeated string file_roots = 20;
+
+  // Largest chunk the agent will accept/emit, in bytes. Client clamps to this.
+  uint32 max_chunk_bytes  = 21;
+}
+
+message Error {
+  enum Code {
+    UNKNOWN            = 0;
+    NOT_SUPPORTED      = 1;   // capability not advertised
+    ACCESS_DENIED      = 2;
+    NOT_FOUND          = 3;
+    INVALID_ARGUMENT   = 4;
+    PATH_NOT_ALLOWED   = 5;   // outside file_roots
+    TOO_LARGE          = 6;
+    IO_ERROR           = 7;
+    BUSY               = 8;
+  }
+  Code   code    = 1;
+  string message = 2;         // human-readable detail for the log/UI
+}
+
+// ============================================================================
+// Ping (liveness / active-latency probe)
+// ============================================================================
+
+message Ping {
+  uint64 sequence_number = 1;
+  int64  utc_ticks       = 2;   // echoed back for RTT
+  bytes  payload         = 3;   // optional filler to probe throughput
+}
+
+// ============================================================================
+// Host + session info
+// ============================================================================
+
+message SysInfoRequest {
+  // If > 0, agent resends a snapshot every interval_ms (subscription) until a
+  // request with interval_ms = 0 (or channel close). If 0, one-shot.
+  uint32 interval_ms = 1;
+}
+
+message SysInfoSnapshot {
+  // -- OS --
+  uint32 os_build        = 1;   // CurrentBuild
+  uint32 os_ubr          = 2;   // UBR (patch level)
+  string os_display_ver  = 3;   // e.g. "24H2"
+  string os_product_name = 4;   // e.g. "Windows 11 Pro"
+  string os_edition      = 5;
+
+  // -- uptime --
+  uint64 uptime_ms       = 10;  // GetTickCount64
+
+  // -- cpu --
+  string cpu_name        = 20;
+  uint32 cpu_logical     = 21;  // logical processors
+  uint32 cpu_physical    = 22;  // physical cores
+  double cpu_percent     = 23;  // live total %, from PDH
+
+  // -- memory --
+  uint64 mem_total_bytes = 30;
+  uint64 mem_avail_bytes = 31;
+
+  // -- identity / session --
+  string host_name       = 40;
+  string user_name       = 41;  // logged-on user in this session
+  uint32 session_id      = 42;
+  string client_name     = 43;  // WTS client name (the connecting endpoint)
+  string protocol        = 44;  // e.g. "RDP"
+  uint32 screen_width    = 45;
+  uint32 screen_height   = 46;
+}
+
+// ============================================================================
+// Per-DVC performance counters
+// ============================================================================
+
+// Snapshot of the currently-active dynamic virtual channels. Primary source is
+// the per-channel perfmon instances; the agent may reconcile against registered
+// AddIns so the viewer can flag "registered but not connected".
+message ChannelRosterRequest {}
+
+message ChannelRoster {
+  message Entry {
+    string name          = 1;   // channel name / counter instance
+    bool   active        = 2;   // present as a live counter instance
+    bool   registered    = 3;   // found under Terminal Server Client AddIns
+    string activation    = 4;   // InprocServer32 | LocalServer32 | LoadLibrary | ""
+    string module_path   = 5;   // resolved DLL/EXE, if known
+  }
+  repeated Entry entries = 1;
+}
+
+// Subscribe to periodic counter samples. Empty channel_names => all instances.
+message CounterSubscribe {
+  repeated string channel_names = 1;
+  uint32          interval_ms   = 2;   // sample cadence
+}
+
+message CounterUnsubscribe {}
+
+// One push per sample interval, covering every subscribed channel instance.
+message CounterSample {
+  message ChannelCounters {
+    string name              = 1;
+    uint64 bytes_sent        = 2;   // cumulative
+    uint64 bytes_received    = 3;   // cumulative
+    double send_rate_bps     = 4;   // derived, bytes/sec this interval
+    double recv_rate_bps     = 5;
+    uint64 send_queue_bytes  = 6;   // backlog / backpressure, if exposed
+    double rtt_ms            = 7;   // if the counter set exposes it; else 0
+  }
+  int64  sampled_utc_ticks = 1;
+  repeated ChannelCounters channels = 2;
+}
+
+// ============================================================================
+// Remote processes / sessions
+// ============================================================================
+
+message ProcessListRequest {
+  bool all_sessions = 1;   // false => this session only
+}
+
+message ProcessList {
+  message Proc {
+    uint32 pid          = 1;
+    uint32 session_id   = 2;
+    string image_name   = 3;
+    string user_name    = 4;   // owner (SID resolved)
+    uint64 working_set  = 5;   // bytes
+    double cpu_percent  = 6;   // if sampled
+  }
+  repeated Proc processes = 1;
+}
+
+// Destructive. Rejected unless Capabilities.process_kill is advertised.
+message ProcessAction {
+  enum Action {
+    NONE      = 0;
+    TERMINATE = 1;   // WTSTerminateProcess
+  }
+  Action action = 1;
+  uint32 pid    = 2;
+}
+
+// ============================================================================
+// File transfer
+// ============================================================================
+//
+// Flow (pull = remote -> client shown; push is symmetric with direction flipped):
+//   client -> FileOpen{direction=PULL, path}
+//   agent  -> FileOpenResult{transfer_id, total_size} | Error
+//   agent  -> FileChunk (windowed; sends up to N unacked chunks)
+//   client -> FileAck{offset}          (advances the window; enables resume)
+//   agent  -> FileClose{sha256, status}
+//
+// Chunks are windowed (send N, wait for acks) so a transfer cannot overrun the
+// channel's send queue -- the same backlog the counter dashboard would light up.
+
+message FileListRequest {
+  string path = 1;   // directory, must be under an advertised file_root
+}
+
+message FileList {
+  message Item {
+    string name      = 1;
+    bool   is_dir    = 2;
+    uint64 size      = 3;
+    int64  mtime_ticks = 4;
+  }
+  string path         = 1;
+  repeated Item items = 2;
+}
+
+message FileOpen {
+  enum Direction {
+    PULL = 0;   // remote (agent) -> client
+    PUSH = 1;   // client -> remote (agent)
+  }
+  uint64    transfer_id = 1;   // client-assigned, unique per open transfer
+  Direction direction   = 2;
+  string    path        = 3;   // remote path; must be under a file_root
+  uint64    total_size  = 4;   // required for PUSH; informational for PULL
+  bool      overwrite   = 5;   // PUSH: allow replacing an existing file
+}
+
+message FileOpenResult {
+  uint64 transfer_id = 1;
+  uint64 total_size  = 2;   // authoritative size (esp. for PULL)
+  uint64 resume_from = 3;   // agent may request resume at this offset (0 = start)
+}
+
+message FileChunk {
+  uint64 transfer_id = 1;
+  uint64 offset      = 2;   // byte offset of this chunk within the file
+  bytes  data        = 3;   // <= Capabilities.max_chunk_bytes
+  bool   last        = 4;   // final chunk marker (belt-and-suspenders vs. size)
+}
+
+message FileAck {
+  uint64 transfer_id = 1;
+  uint64 offset      = 2;   // contiguous bytes durably received so far
+}
+
+message FileClose {
+  enum Status {
+    COMPLETE  = 0;
+    ABORTED   = 1;
+    FAILED    = 2;
+  }
+  uint64 transfer_id = 1;
+  Status status      = 2;
+  bytes  sha256      = 3;   // 32 bytes, whole-file digest for integrity check
+  string message     = 4;   // detail on ABORTED/FAILED
+}

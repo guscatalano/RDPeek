@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Rdpeek.Protocol</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.28.3" />
+    <PackageReference Include="Grpc.Tools" Version="2.68.1" PrivateAssets="All" />
+  </ItemGroup>
+
+  <!-- Generates C# message classes from the shared wire contract at build time. -->
+  <ItemGroup>
+    <Protobuf Include="..\..\proto\diag.proto" ProtoRoot="..\..\proto" GrpcServices="None" />
+  </ItemGroup>
+
+</Project>
