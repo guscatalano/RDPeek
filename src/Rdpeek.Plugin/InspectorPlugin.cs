@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Rdpeek.Client;
 
 namespace Rdpeek.Plugin;
 
@@ -24,6 +25,11 @@ internal sealed class InspectorPlugin : IWTSPlugin
         int hr = pChannelMgr.CreateListener(InspectorChannel, 0, new ListenerCallback(), out var listener);
         Logger.Log($"CreateListener('{InspectorChannel}') hr=0x{hr:X8}");
         if (hr >= 0) _listener = listener;
+
+        // Client-side view: how DVCs are configured on this machine. Logged here (at
+        // load) so it appears even when no agent is serving on the remote side.
+        Logger.Log(ClientChannels.Format(ClientChannels.Collect()));
+
         return hr >= 0 ? 0 : hr;
     }
 

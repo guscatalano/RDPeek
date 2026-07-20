@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using Dvc.Diag.Protocol;
-using Rdpeek.Client;
 using Rdpeek.Protocol;
 
 namespace Rdpeek.Plugin;
@@ -36,9 +35,6 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
     {
         try
         {
-            // Client-side view: how DVCs are configured on this machine (registry).
-            Logger.Log(ClientChannels.Format(ClientChannels.Collect()));
-
             var caps = await _router.RequestAsync(new Envelope
             {
                 Hello = new Hello { ProtocolVersion = 1, ClientBuild = "rdpeek-plugin/0.1" },
