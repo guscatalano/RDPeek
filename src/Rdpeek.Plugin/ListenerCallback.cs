@@ -6,6 +6,10 @@ namespace Rdpeek.Plugin;
 [ComVisible(true)]
 internal sealed class ListenerCallback : IWTSListenerCallback
 {
+    private readonly int _seq;
+
+    public ListenerCallback(int seq) => _seq = seq;
+
     public int OnNewChannelConnection(
         IWTSVirtualChannel pChannel,
         string? data,
@@ -14,7 +18,7 @@ internal sealed class ListenerCallback : IWTSListenerCallback
     {
         Logger.Log("OnNewChannelConnection — accepting");
         pbAccept = true;
-        ppCallback = new ChannelCallback(pChannel);
+        ppCallback = new ChannelCallback(pChannel, _seq);
         return 0; // S_OK
     }
 }

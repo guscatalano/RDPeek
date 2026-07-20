@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Dvc.Diag.Protocol;
+using Rdpeek.Client;
 using Rdpeek.Protocol;
 
 namespace Rdpeek.Plugin;
@@ -16,11 +17,16 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
     private readonly IWTSVirtualChannel _channel;
     private readonly FrameDecoder _decoder = new();
     private readonly EnvelopeRouter _router;
+    private readonly int _seq;
 
-    public ChannelCallback(IWTSVirtualChannel channel)
+    public ChannelCallback(IWTSVirtualChannel channel, int seq)
     {
         _channel = channel;
+        _seq = seq;
         _router = new EnvelopeRouter(env => { WriteEnvelope(env); return Task.CompletedTask; });
+
+        // Agent connected on this channel — tell the companion (host filled in below).
+        Broker.Report("connected", Environment.ProcessId, _seq);
         Task.Run(BootstrapAsync);
     }
 
@@ -46,6 +52,9 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
             var s = snap.SysinfoSnapshot;
             Logger.Log($"remote host: {s.HostName} — {s.OsProductName} build {s.OsBuild}.{s.OsUbr} " +
                        $"({s.OsDisplayVer}), CPU {s.CpuName} @ {s.CpuPercent}%, up {s.UptimeMs / 1000}s");
+
+            // Re-report with the resolved host so the companion can match this to its window.
+            Broker.Report("connected", Environment.ProcessId, _seq, s.HostName);
         }
         catch (Exception ex)
         {
@@ -72,6 +81,8 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
     public int OnClose()
     {
         Logger.Log("channel closed");
+        // Agent gone but the RDP connection may persist — back to awaiting an agent.
+        Broker.Report("listening", Environment.ProcessId, _seq);
         return 0;
     }
 }
