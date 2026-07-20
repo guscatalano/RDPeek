@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Rdpeek.Protocol\Rdpeek.Protocol.csproj" />
+    <ProjectReference Include="..\Rdpeek.Client\Rdpeek.Client.csproj" />
   </ItemGroup>
 
 </Project>

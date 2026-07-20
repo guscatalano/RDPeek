@@ -38,6 +38,7 @@ Early. What exists and is verified today:
 | `rdpeek-doctor` — plugin registration diagnostician | ✅ done (verified against the live registry) |
 | `Rdpeek.Agent` — SysInfo + process collectors, agent core | ✅ collectors verified live; `serve` DVC transport built |
 | `Rdpeek.Plugin` — client COM plugin (`IWTSPlugin`, LocalServer32) | ✅ built; COM activation + `IWTSPlugin` verified; live DVC round-trip pending an RDP session |
+| `Rdpeek.Client` — client-side DVC configuration roster | ✅ done, verified live (`rdpeek-plugin channels`) |
 | Viewer, per-DVC counters, file transport | ⬜ not yet |
 
 The per-DVC **performance counters** RDPeek will consume are not yet released in
@@ -65,6 +66,12 @@ Diagnose DVC plugin registrations on this machine:
 
 ```powershell
 dotnet run --project src/Rdpeek.Doctor
+```
+
+See how DVCs are configured on this client (registered plugins + built-in channels):
+
+```powershell
+dotnet run --project src/Rdpeek.Plugin -- channels
 ```
 
 ## Layout

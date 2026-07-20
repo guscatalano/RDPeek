@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Rdpeek.Agent/Rdpeek.Agent.csproj" />
+    <Project Path="src/Rdpeek.Client/Rdpeek.Client.csproj" />
     <Project Path="src/Rdpeek.Doctor/Rdpeek.Doctor.csproj" />
     <Project Path="src/Rdpeek.Plugin/Rdpeek.Plugin.csproj">
       <Platform Project="x64" />
