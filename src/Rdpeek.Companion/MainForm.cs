@@ -11,6 +11,7 @@ public sealed class MainForm : Form
 {
     private readonly DataGridView _grid = new();
     private readonly TextBox _agentPath = new();
+    private readonly CheckBox _winR = new();
     private readonly Label _status = new();
     private readonly System.Windows.Forms.Timer _refresh = new();
     private readonly BrokerServer _broker = new();
@@ -33,10 +34,19 @@ public sealed class MainForm : Form
         var refreshBtn = new Button { Text = "Refresh", Left = 670, Top = 9, Width = 80, Anchor = AnchorStyles.Top | AnchorStyles.Right };
         refreshBtn.Click += (_, _) => RefreshUi();
 
+        _winR.Left = 80;
+        _winR.Top = 40;
+        _winR.Width = 660;
+        _winR.AutoSize = false;
+        _winR.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        _winR.Checked = false; // default: paste into a focused session shell (most reliable)
+        _winR.Text = "Use Win+R (needs mstsc “Apply Windows key combinations → On the remote computer”). " +
+                     "Unchecked: focus a shell in the session first.";
+
         _grid.Left = 10;
-        _grid.Top = 44;
+        _grid.Top = 70;
         _grid.Width = 740;
-        _grid.Height = 260;
+        _grid.Height = 234;
         _grid.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         _grid.AllowUserToAddRows = false;
         _grid.AllowUserToDeleteRows = false;
@@ -56,7 +66,7 @@ public sealed class MainForm : Form
         _status.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         _status.Text = "Ready.";
 
-        Controls.AddRange(new Control[] { pathLabel, _agentPath, refreshBtn, _grid, _status });
+        Controls.AddRange(new Control[] { pathLabel, _agentPath, refreshBtn, _winR, _grid, _status });
 
         _broker.Changed += OnBrokerChanged;
         _broker.Start();
@@ -145,10 +155,12 @@ public sealed class MainForm : Form
         }
 
         _status.ForeColor = SystemColors.ControlText;
-        _status.Text = $"Bootstrapping agent in '{w.Host}' — sending Win+R…";
+        _status.Text = _winR.Checked
+            ? $"Bootstrapping agent in '{w.Host}' — sending Win+R…"
+            : $"Bootstrapping agent in '{w.Host}' — pasting into the focused session window…";
         try
         {
-            await InputBootstrap.RunAsync(w.Hwnd, path);
+            await InputBootstrap.RunAsync(w.Hwnd, path, _winR.Checked);
             _status.Text = $"Sent to '{w.Host}'. Watching for the agent to connect…";
         }
         catch (Exception ex)

@@ -37,7 +37,13 @@ public static class InputBootstrap
 
     // --- input injection ---
 
-    public static async Task RunAsync(IntPtr targetWindow, string localAgentPath, int stepDelayMs = 400)
+    /// <param name="useWinR">
+    /// true: send Win+R first to open the session's Run dialog (requires mstsc
+    /// "Apply Windows key combinations → On the remote computer", or full-screen).
+    /// false: paste into whatever is focused in the session (open a shell there first)
+    /// — Ctrl+V and Enter forward reliably; Win-key combos do not.
+    /// </param>
+    public static async Task RunAsync(IntPtr targetWindow, string localAgentPath, bool useWinR, int stepDelayMs = 400)
     {
         string command = BuildCommand(localAgentPath);
 
@@ -49,8 +55,11 @@ public static class InputBootstrap
         {
             SetForegroundWindow(targetWindow);
             await Task.Delay(stepDelayMs);       // let focus settle into the session
-            SendCombo(VK_LWIN, VK_R);             // Win+R → Run dialog
-            await Task.Delay(stepDelayMs * 2);    // Run dialog needs a moment to appear
+            if (useWinR)
+            {
+                SendCombo(VK_LWIN, VK_R);         // Win+R → Run dialog (needs Win-combos → remote)
+                await Task.Delay(stepDelayMs * 2);
+            }
             SendCombo(VK_CONTROL, VK_V);          // paste the command (via clipboard redirection)
             await Task.Delay(stepDelayMs);
             SendKey(VK_RETURN);                   // execute
