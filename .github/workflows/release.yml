@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build + publish release assets
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Publish self-contained agent + doctor
+        run: |
+          dotnet publish src/Rdpeek.Agent  -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/agent
+          dotnet publish src/Rdpeek.Doctor -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/doctor
+
+      - name: Create / update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ github.event.inputs.tag }}' } else { '${{ github.ref_name }}' }
+          gh release create $tag `
+            publish/agent/rdpeek-agent.exe `
+            publish/doctor/rdpeek-doctor.exe `
+            --title $tag --generate-notes
