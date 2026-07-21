@@ -6,7 +6,7 @@ using Google.Protobuf;
 using Microsoft.Win32.SafeHandles;
 using Rdpeek.Client;
 
-namespace Rdpeek.Companion;
+namespace Rdpeek.Client;
 
 /// <summary>
 /// Hosts the local broker pipe that plugin connections report to. Tracks per-connection

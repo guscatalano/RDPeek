@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace Rdpeek.Companion;
+namespace Rdpeek.Client;
 
 /// <summary>One open mstsc (RDP client) window = one connection context.</summary>
 public sealed record RdpWindow(IntPtr Hwnd, int Pid, string Title, string Host);

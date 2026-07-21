@@ -2,6 +2,8 @@ using System.Drawing;
 using System.Security.Principal;
 using System.Windows.Forms;
 
+using Rdpeek.Client;
+
 namespace Rdpeek.Companion;
 
 /// <summary>

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Windows.Forms;
+using Rdpeek.Client;
 using Rdpeek.Companion;
 
 internal static class Program
