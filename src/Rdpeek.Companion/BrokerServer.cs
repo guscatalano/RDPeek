@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
+using Dvc.Diag.Protocol;
+using Google.Protobuf;
 using Microsoft.Win32.SafeHandles;
 using Rdpeek.Client;
 
@@ -13,7 +15,15 @@ namespace Rdpeek.Companion;
 /// </summary>
 public sealed class BrokerServer : IDisposable
 {
-    public sealed record AgentState(int Pid, int Seq, string Status, string Host);
+    public sealed class AgentState
+    {
+        public int Pid;
+        public int Seq;
+        public string Status = "";
+        public string Host = "";
+        public SysInfoSnapshot? Sysinfo;
+        public ProcessList? Procs;
+    }
 
     private readonly ConcurrentDictionary<string, AgentState> _states = new();
     private readonly CancellationTokenSource _cts = new();
@@ -57,12 +67,36 @@ public sealed class BrokerServer : IDisposable
                 var parsed = Broker.Parse(line);
                 if (parsed is null) continue;
 
-                var (ev, pid, seq, host) = parsed.Value;
+                var (kind, pid, seq, payload) = parsed.Value;
                 var key = $"{pid}:{seq}";
-                if (ev == "gone")
+
+                if (kind == "gone")
+                {
                     _states.TryRemove(key, out _);
-                else
-                    _states[key] = new AgentState(pid, seq, ev, host);
+                    Changed?.Invoke();
+                    continue;
+                }
+
+                var st = _states.GetOrAdd(key, _ => new AgentState { Pid = pid, Seq = seq });
+                switch (kind)
+                {
+                    case "connected":
+                    case "listening":
+                        st.Status = kind;
+                        if (!string.IsNullOrEmpty(payload)) st.Host = payload;
+                        break;
+                    case "sysinfo":
+                        try
+                        {
+                            st.Sysinfo = SysInfoSnapshot.Parser.ParseJson(payload);
+                            if (string.IsNullOrEmpty(st.Host)) st.Host = st.Sysinfo.HostName;
+                        }
+                        catch { }
+                        break;
+                    case "procs":
+                        try { st.Procs = ProcessList.Parser.ParseJson(payload); } catch { }
+                        break;
+                }
 
                 Changed?.Invoke();
             }

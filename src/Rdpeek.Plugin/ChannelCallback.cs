@@ -1,15 +1,16 @@
 using System.Runtime.InteropServices;
+using System.Threading;
 using Dvc.Diag.Protocol;
+using Google.Protobuf;
 using Rdpeek.Client;
 using Rdpeek.Protocol;
 
 namespace Rdpeek.Plugin;
 
 /// <summary>
-/// Per-connection channel handler. Receives bytes from the RDP client, feeds the
-/// frame decoder + router, and — once connected — proactively queries the agent for
-/// capabilities and a host snapshot, logging the result. This is the end-to-end
-/// proof: connect a session, and the remote host info appears in the plugin log.
+/// Per-connection channel handler. Bridges the agent (over the DVC) to the companion
+/// (over the broker pipe): polls the agent for host info + processes and pushes them to
+/// the companion for the dashboard. Also reports connection status for the ✓/⚠ view.
 /// </summary>
 [ComVisible(true)]
 internal sealed class ChannelCallback : IWTSVirtualChannelCallback
@@ -18,7 +19,7 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
     private readonly FrameDecoder _decoder = new();
     private readonly EnvelopeRouter _router;
     private readonly int _seq;
-    private readonly System.Threading.Timer _heartbeat;
+    private readonly CancellationTokenSource _cts = new();
     private volatile string _host = "";
 
     public ChannelCallback(IWTSVirtualChannel channel, int seq)
@@ -27,12 +28,8 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
         _seq = seq;
         _router = new EnvelopeRouter(env => { WriteEnvelope(env); return Task.CompletedTask; });
 
-        // Agent connected on this channel — tell the companion, and keep re-reporting so
-        // a companion that starts mid-session (or after this one-shot) catches up.
         Broker.Report("connected", Environment.ProcessId, _seq);
-        _heartbeat = new System.Threading.Timer(
-            _ => Broker.Report("connected", Environment.ProcessId, _seq, _host), null, 2000, 2000);
-        Task.Run(BootstrapAsync);
+        Task.Run(PollLoopAsync);
     }
 
     private void WriteEnvelope(Envelope env)
@@ -42,38 +39,63 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
         if (hr < 0) Logger.Log($"channel Write failed 0x{hr:X8}");
     }
 
-    private async Task BootstrapAsync()
+    /// <summary>Handshake once, then poll host + processes every few seconds and push to the companion.</summary>
+    private async Task PollLoopAsync()
     {
         try
         {
-            var caps = await _router.RequestAsync(new Envelope
+            var caps = await RequestAsync(new Envelope
             {
                 Hello = new Hello { ProtocolVersion = 1, ClientBuild = "rdpeek-plugin/0.1" },
             });
-            if (caps.BodyCase == Envelope.BodyOneofCase.Capabilities)
+            if (caps?.BodyCase == Envelope.BodyOneofCase.Capabilities)
                 Logger.Log($"agent capabilities: build={caps.Capabilities.AgentBuild} " +
                            $"sysinfo={caps.Capabilities.Sysinfo} processes={caps.Capabilities.ProcessList}");
             else
-                Logger.Log($"unexpected reply to Hello: {caps.BodyCase} {caps.Error?.Message}");
+                Logger.Log($"unexpected reply to Hello: {caps?.BodyCase.ToString() ?? "none"}");
 
-            var snap = await _router.RequestAsync(new Envelope { SysinfoRequest = new SysInfoRequest() });
-            if (snap.BodyCase == Envelope.BodyOneofCase.SysinfoSnapshot)
+            bool loggedHost = false;
+            while (!_cts.IsCancellationRequested)
             {
-                var s = snap.SysinfoSnapshot;
-                Logger.Log($"remote host: {s.HostName} — {s.OsProductName} build {s.OsBuild}.{s.OsUbr} " +
-                           $"({s.OsDisplayVer}), CPU {s.CpuName} @ {s.CpuPercent}%, up {s.UptimeMs / 1000}s");
-                // Store the host so the heartbeat reports it too.
-                _host = s.HostName;
-                Broker.Report("connected", Environment.ProcessId, _seq, s.HostName);
-            }
-            else
-            {
-                Logger.Log($"unexpected reply to SysInfoRequest: {snap.BodyCase} {snap.Error?.Message}");
+                var snap = await RequestAsync(new Envelope { SysinfoRequest = new SysInfoRequest() });
+                if (snap is null) break; // channel dead / timed out
+                if (snap.BodyCase == Envelope.BodyOneofCase.SysinfoSnapshot)
+                {
+                    var s = snap.SysinfoSnapshot;
+                    _host = s.HostName;
+                    if (!loggedHost)
+                    {
+                        Logger.Log($"remote host: {s.HostName} — {s.OsProductName} build {s.OsBuild}.{s.OsUbr}");
+                        loggedHost = true;
+                    }
+                    Broker.Report("connected", Environment.ProcessId, _seq, _host);
+                    Broker.Report("sysinfo", Environment.ProcessId, _seq, JsonFormatter.Default.Format(s));
+                }
+
+                var procs = await RequestAsync(new Envelope { ProcessListRequest = new ProcessListRequest() });
+                if (procs?.BodyCase == Envelope.BodyOneofCase.ProcessList)
+                    Broker.Report("procs", Environment.ProcessId, _seq, JsonFormatter.Default.Format(procs.ProcessList));
+
+                try { await Task.Delay(3000, _cts.Token); } catch { break; }
             }
         }
         catch (Exception ex)
         {
-            Logger.Log($"bootstrap error: {ex.Message}");
+            Logger.Log($"poll loop error: {ex.Message}");
+        }
+    }
+
+    private async Task<Envelope?> RequestAsync(Envelope request)
+    {
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+            cts.CancelAfter(5000);
+            return await _router.RequestAsync(request, cts.Token);
+        }
+        catch
+        {
+            return null; // timed out, cancelled, or channel error
         }
     }
 
@@ -96,8 +118,7 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
     public int OnClose()
     {
         Logger.Log("channel closed");
-        _heartbeat.Dispose();
-        // Agent gone but the RDP connection may persist — back to awaiting an agent.
+        _cts.Cancel();
         Broker.Report("listening", Environment.ProcessId, _seq);
         return 0;
     }
