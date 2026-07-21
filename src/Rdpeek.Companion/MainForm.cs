@@ -39,9 +39,9 @@ public sealed class MainForm : Form
         _winR.Width = 660;
         _winR.AutoSize = false;
         _winR.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        _winR.Checked = false; // default: paste into a focused session shell (most reliable)
-        _winR.Text = "Use Win+R (needs mstsc “Apply Windows key combinations → On the remote computer”). " +
-                     "Unchecked: focus a shell in the session first.";
+        _winR.Checked = true; // default: open the session's Run dialog with Win+R
+        _winR.Text = "Use Win+R to open Run in the session (set mstsc Keyboard → “On the remote computer”, or go full-screen). " +
+                     "Unchecked: type into a shell you focused in the session. Needs Drives redirection for \\\\tsclient.";
 
         _grid.Left = 10;
         _grid.Top = 70;

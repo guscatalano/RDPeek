@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using System.Windows.Forms;
 
 namespace Rdpeek.Companion;
 
@@ -41,42 +40,29 @@ public static class InputBootstrap
     {
         string command = BuildCommand(localAgentPath);
 
-        string? savedClipboard = null;
-        try { if (Clipboard.ContainsText()) savedClipboard = Clipboard.GetText(); } catch { /* ignore */ }
-        Clipboard.SetText(command);
-
-        try
+        bool focused = ForceForeground(targetWindow);
+        await Task.Delay(stepDelayMs);                // let the session engage input
+        if (!focused && GetForegroundWindow() != targetWindow)
         {
-            bool focused = ForceForeground(targetWindow);
-            await Task.Delay(stepDelayMs);            // let the session engage input
-            if (!focused && GetForegroundWindow() != targetWindow)
-            {
-                ForceForeground(targetWindow);        // one more attempt
-                await Task.Delay(stepDelayMs);
-                focused = GetForegroundWindow() == targetWindow;
-            }
-            if (!focused) return false;               // don't fire keys at the wrong window
+            ForceForeground(targetWindow);            // one more attempt
+            await Task.Delay(stepDelayMs);
+            focused = GetForegroundWindow() == targetWindow;
+        }
+        if (!focused) return false;                   // don't fire keys at the wrong window
 
-            if (useWinR)
-            {
-                SendCombo(VK_LWIN, VK_R);
-                await Task.Delay(stepDelayMs * 2);
-            }
-            SendCombo(VK_CONTROL, VK_V);
-            await Task.Delay(stepDelayMs);
-            SendKey(VK_RETURN);
-            await Task.Delay(stepDelayMs);
-            return true;
-        }
-        finally
+        if (useWinR)
         {
-            try
-            {
-                if (savedClipboard != null) Clipboard.SetText(savedClipboard);
-                else Clipboard.Clear();
-            }
-            catch { /* ignore */ }
+            SendCombo(VK_LWIN, VK_R);                  // open the session's Run dialog
+            await Task.Delay(stepDelayMs * 2);        // it needs a moment to appear
         }
+
+        // Type the command as Unicode keystrokes — layout-independent, and no
+        // dependency on clipboard redirection (which Ctrl+V would need).
+        TypeString(command);
+        await Task.Delay(stepDelayMs);
+        SendKey(VK_RETURN);
+        await Task.Delay(stepDelayMs);
+        return true;
     }
 
     // --- robust foreground ---
@@ -124,9 +110,31 @@ public static class InputBootstrap
     private const uint KEYEVENTF_KEYUP = 0x0002;
     private const uint INPUT_KEYBOARD = 1;
 
+    private const uint KEYEVENTF_UNICODE = 0x0004;
+
     private static void SendKey(ushort vk) => Send(KeyDown(vk), KeyUp(vk));
     private static void SendCombo(ushort modifier, ushort key)
         => Send(KeyDown(modifier), KeyDown(key), KeyUp(key), KeyUp(modifier));
+
+    /// <summary>Type text as Unicode keystrokes (layout-independent, no clipboard).</summary>
+    private static void TypeString(string text)
+    {
+        if (text.Length == 0) return;
+        var inputs = new INPUT[text.Length * 2];
+        int i = 0;
+        foreach (char c in text)
+        {
+            inputs[i++] = UnicodeKey(c, up: false);
+            inputs[i++] = UnicodeKey(c, up: true);
+        }
+        SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
+    }
+
+    private static INPUT UnicodeKey(char c, bool up) => new()
+    {
+        type = INPUT_KEYBOARD,
+        u = new InputUnion { ki = new KEYBDINPUT { wVk = 0, wScan = c, dwFlags = KEYEVENTF_UNICODE | (up ? KEYEVENTF_KEYUP : 0) } },
+    };
 
     private static INPUT KeyDown(ushort vk) => MakeKey(vk, 0);
     private static INPUT KeyUp(ushort vk) => MakeKey(vk, KEYEVENTF_KEYUP);
