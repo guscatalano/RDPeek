@@ -29,9 +29,19 @@ for ($i = 0; $i -lt 25; $i++)
     catch { Start-Sleep -Milliseconds 200 }
 }
 
-Write-Host "Downloading agent from $url ..."
+Write-Host "Downloading agent (~68 MB) from $url ..."
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
+# WebClient is far faster than Invoke-WebRequest for large files (IWR's progress bar
+# throttles it to a crawl). Falls back to IWR with the progress bar silenced.
+try
+{
+    (New-Object System.Net.WebClient).DownloadFile($url, $dest)
+}
+catch
+{
+    $ProgressPreference = 'SilentlyContinue'
+    Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
+}
 Write-Host "Installed agent -> $dest" -ForegroundColor Green
 
 # Register a scheduled task: on RDP connect, run the agent in the interactive session.
