@@ -35,13 +35,20 @@ public static class Broker
         try
         {
             using var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.Out);
-            pipe.Connect(200);
+            pipe.Connect(500);
             using var writer = new StreamWriter(pipe) { AutoFlush = true };
             writer.WriteLine(Format(ev, pid, seq, host));
         }
-        catch
+        catch (Exception ex)
         {
-            // Companion not running — reporting is best-effort.
+            // Best-effort — but log why, so a silently-dropped report can be diagnosed.
+            try
+            {
+                File.AppendAllText(
+                    System.IO.Path.Combine(System.IO.Path.GetTempPath(), "rdpeek-brokerclient.log"),
+                    $"{DateTime.Now:HH:mm:ss.fff}  report '{ev}' failed: {ex.GetType().Name}: {ex.Message}{Environment.NewLine}");
+            }
+            catch { }
         }
     }
 }

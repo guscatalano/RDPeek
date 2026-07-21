@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.IO.Pipes;
-using System.Security.AccessControl;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using Rdpeek.Client;
 
 namespace Rdpeek.Companion;
@@ -57,13 +58,6 @@ public sealed class BrokerServer : IDisposable
                 if (parsed is null) continue;
 
                 var (ev, pid, seq, host) = parsed.Value;
-                try
-                {
-                    File.AppendAllText(Path.Combine(Path.GetTempPath(), "rdpeek-broker.log"),
-                        $"{DateTime.Now:HH:mm:ss.fff}  recv {ev} pid={pid} seq={seq} host='{host}'{Environment.NewLine}");
-                }
-                catch { }
-
                 var key = $"{pid}:{seq}";
                 if (ev == "gone")
                     _states.TryRemove(key, out _);
@@ -84,29 +78,56 @@ public sealed class BrokerServer : IDisposable
     }
 
     /// <summary>
-    /// Create the broker pipe with a Low mandatory integrity label so the plugin
-    /// (medium integrity, launched by mstsc) can write to it even if the companion is
-    /// running elevated. Falls back to a default pipe if ACL setup isn't available.
+    /// Create the broker pipe and drop its mandatory integrity label to Low, so the
+    /// plugin (medium integrity, launched by mstsc) can write to it even if the
+    /// companion happens to run elevated. Best-effort — a plain pipe still works when
+    /// the companion runs non-elevated (same integrity as the plugin).
     /// </summary>
     private static NamedPipeServerStream CreateServer()
     {
+        var pipe = new NamedPipeServerStream(
+            Broker.PipeName, PipeDirection.In,
+            NamedPipeServerStream.MaxAllowedServerInstances,
+            PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        try { ApplyLowIntegrityLabel(pipe.SafePipeHandle); } catch { /* best-effort */ }
+        return pipe;
+    }
+
+    private const int SE_KERNEL_OBJECT = 6;
+    private const int LABEL_SECURITY_INFORMATION = 0x10;
+    private const uint SDDL_REVISION_1 = 1;
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool ConvertStringSecurityDescriptorToSecurityDescriptorW(
+        string sddl, uint revision, out IntPtr securityDescriptor, out uint size);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool GetSecurityDescriptorSacl(
+        IntPtr securityDescriptor, out bool saclPresent, out IntPtr sacl, out bool saclDefaulted);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern uint SetSecurityInfo(
+        SafePipeHandle handle, int objectType, int securityInfo,
+        IntPtr owner, IntPtr group, IntPtr dacl, IntPtr sacl);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr LocalFree(IntPtr mem);
+
+    private static void ApplyLowIntegrityLabel(SafePipeHandle handle)
+    {
+        // "S:(ML;;NW;;;LW)" = Low mandatory label, no-write-up. Setting a label at or
+        // below the caller's own integrity needs no special privilege.
+        if (!ConvertStringSecurityDescriptorToSecurityDescriptorW("S:(ML;;NW;;;LW)", SDDL_REVISION_1, out IntPtr sd, out _))
+            return;
         try
         {
-            var security = new PipeSecurity();
-            // Full pipe access to Authenticated Users (AU) + Low mandatory label (LW),
-            // no-write-up (NW) — so medium/high callers can write to a low-labeled pipe.
-            security.SetSecurityDescriptorSddlForm("D:(A;;0x1f019f;;;AU)S:(ML;;NW;;;LW)", AccessControlSections.All);
-            return NamedPipeServerStreamAcl.Create(
-                Broker.PipeName, PipeDirection.In,
-                NamedPipeServerStream.MaxAllowedServerInstances,
-                PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 0, 0, security);
+            if (GetSecurityDescriptorSacl(sd, out bool present, out IntPtr sacl, out _) && present)
+                SetSecurityInfo(handle, SE_KERNEL_OBJECT, LABEL_SECURITY_INFORMATION,
+                    IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, sacl);
         }
-        catch
+        finally
         {
-            return new NamedPipeServerStream(
-                Broker.PipeName, PipeDirection.In,
-                NamedPipeServerStream.MaxAllowedServerInstances,
-                PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+            LocalFree(sd);
         }
     }
 

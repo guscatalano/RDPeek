@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Security.Principal;
 using System.Windows.Forms;
 
 namespace Rdpeek.Companion;
@@ -18,7 +19,18 @@ public sealed class MainForm : Form
     private readonly Label _status = new();
     private readonly System.Windows.Forms.Timer _refresh = new();
     private readonly BrokerServer _broker = new();
+    private readonly bool _elevated = IsElevated();
     private List<RdpWindow> _windows = new();
+
+    private static bool IsElevated()
+    {
+        try
+        {
+            using var id = WindowsIdentity.GetCurrent();
+            return new WindowsPrincipal(id).IsInRole(WindowsBuiltInRole.Administrator);
+        }
+        catch { return false; }
+    }
 
     public MainForm()
     {
@@ -164,6 +176,12 @@ public sealed class MainForm : Form
         {
             _status.ForeColor = Color.Green;
             _status.Text = $"Agent connected on {connected} session(s).";
+        }
+        else if (_elevated)
+        {
+            _status.ForeColor = Color.Firebrick;
+            _status.Text = "Running as administrator — the plugin (medium integrity) can't reach the broker. " +
+                           "Restart the companion NOT as admin.";
         }
         else
         {
