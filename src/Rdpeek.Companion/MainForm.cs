@@ -160,8 +160,17 @@ public sealed class MainForm : Form
             : $"Bootstrapping agent in '{w.Host}' — pasting into the focused session window…";
         try
         {
-            await InputBootstrap.RunAsync(w.Hwnd, path, _winR.Checked);
-            _status.Text = $"Sent to '{w.Host}'. Watching for the agent to connect…";
+            bool focused = await InputBootstrap.RunAsync(w.Hwnd, path, _winR.Checked);
+            if (focused)
+            {
+                _status.ForeColor = SystemColors.ControlText;
+                _status.Text = $"Sent to '{w.Host}'. Watching for the agent to connect…";
+            }
+            else
+            {
+                _status.ForeColor = Color.Firebrick;
+                _status.Text = $"Could not bring '{w.Host}' to the foreground — click the RDP window once, then retry.";
+            }
         }
         catch (Exception ex)
         {
