@@ -16,13 +16,11 @@ internal static class WtsChannel
     private const int ERROR_INSUFFICIENT_BUFFER = 122;
     private const int ERROR_IO_INCOMPLETE = 996;
 
-    // Virtual-channel chunking (MS-RDPBCGR CHANNEL_PDU_HEADER: length + flags).
-    // The WTS API exposes this; the client's DVC COM API hides it. We must strip it
-    // on read and add it on write.
+    // On READ, WTSVirtualChannelRead exposes an 8-byte CHANNEL_PDU_HEADER (length +
+    // flags) that the client's DVC COM Write added — we strip it (see reassembler).
+    // On WRITE, we send the frame RAW: the client's DVC COM OnDataReceived hands the
+    // app exactly what we wrote, so a header here would desync the client.
     public const int ChannelPduHeaderSize = 8;
-    private const uint CHANNEL_FLAG_FIRST = 0x01;
-    private const uint CHANNEL_FLAG_LAST = 0x02;
-    private const int CHANNEL_CHUNK_LENGTH = 1600;
 
     [DllImport("wtsapi32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
     private static extern IntPtr WTSVirtualChannelOpenEx(uint sessionId, string pVirtualName, uint flags);
@@ -68,38 +66,13 @@ internal static class WtsChannel
         };
     }
 
-    /// <summary>
-    /// Write a message wrapped in CHANNEL_PDU_HEADER chunk(s) — the framing the client's
-    /// DVC layer expects and strips. Small messages go in a single FIRST|LAST chunk.
-    /// </summary>
-    public static bool WriteMessage(IntPtr h, byte[] data)
+    /// <summary>Write a frame RAW (no CHANNEL_PDU_HEADER — the client's DVC layer delivers it as-is).</summary>
+    public static bool WriteFrame(IntPtr h, byte[] frame)
     {
         int offset = 0;
-        do
+        while (offset < frame.Length)
         {
-            int chunk = Math.Min(CHANNEL_CHUNK_LENGTH, data.Length - offset);
-            uint flags = 0;
-            if (offset == 0) flags |= CHANNEL_FLAG_FIRST;
-            if (offset + chunk >= data.Length) flags |= CHANNEL_FLAG_LAST;
-
-            var pdu = new byte[ChannelPduHeaderSize + chunk];
-            BinaryPrimitives.WriteUInt32LittleEndian(pdu, (uint)data.Length); // total message length
-            BinaryPrimitives.WriteUInt32LittleEndian(pdu.AsSpan(4), flags);
-            Array.Copy(data, offset, pdu, ChannelPduHeaderSize, chunk);
-
-            if (!WriteRaw(h, pdu)) return false;
-            offset += chunk;
-        }
-        while (offset < data.Length);
-        return true;
-    }
-
-    private static bool WriteRaw(IntPtr h, byte[] bytes)
-    {
-        int offset = 0;
-        while (offset < bytes.Length)
-        {
-            byte[] chunk = offset == 0 ? bytes : bytes[offset..];
+            byte[] chunk = offset == 0 ? frame : frame[offset..];
             if (!WTSVirtualChannelWrite(h, chunk, (uint)chunk.Length, out uint written) || written == 0)
                 return false;
             offset += (int)written;

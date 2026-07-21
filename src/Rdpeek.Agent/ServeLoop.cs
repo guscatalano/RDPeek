@@ -65,8 +65,7 @@ internal static class ServeLoop
         var decoder = new FrameDecoder();
         var router = new EnvelopeRouter(env =>
         {
-            var frame = Frame.Encode(env);
-            WtsChannel.WriteMessage(h, frame); // wraps in CHANNEL_PDU_HEADER
+            WtsChannel.WriteFrame(h, Frame.Encode(env)); // raw — client's DVC layer delivers as-is
             return Task.CompletedTask;
         });
         _ = new AgentCore(router);
