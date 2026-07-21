@@ -18,6 +18,8 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
     private readonly FrameDecoder _decoder = new();
     private readonly EnvelopeRouter _router;
     private readonly int _seq;
+    private readonly System.Threading.Timer _heartbeat;
+    private volatile string _host = "";
 
     public ChannelCallback(IWTSVirtualChannel channel, int seq)
     {
@@ -25,8 +27,11 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
         _seq = seq;
         _router = new EnvelopeRouter(env => { WriteEnvelope(env); return Task.CompletedTask; });
 
-        // Agent connected on this channel — tell the companion (host filled in below).
+        // Agent connected on this channel — tell the companion, and keep re-reporting so
+        // a companion that starts mid-session (or after this one-shot) catches up.
         Broker.Report("connected", Environment.ProcessId, _seq);
+        _heartbeat = new System.Threading.Timer(
+            _ => Broker.Report("connected", Environment.ProcessId, _seq, _host), null, 2000, 2000);
         Task.Run(BootstrapAsync);
     }
 
@@ -57,7 +62,8 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
                 var s = snap.SysinfoSnapshot;
                 Logger.Log($"remote host: {s.HostName} — {s.OsProductName} build {s.OsBuild}.{s.OsUbr} " +
                            $"({s.OsDisplayVer}), CPU {s.CpuName} @ {s.CpuPercent}%, up {s.UptimeMs / 1000}s");
-                // Re-report with the resolved host so the companion can match this to its window.
+                // Store the host so the heartbeat reports it too.
+                _host = s.HostName;
                 Broker.Report("connected", Environment.ProcessId, _seq, s.HostName);
             }
             else
@@ -90,6 +96,7 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
     public int OnClose()
     {
         Logger.Log("channel closed");
+        _heartbeat.Dispose();
         // Agent gone but the RDP connection may persist — back to awaiting an agent.
         Broker.Report("listening", Environment.ProcessId, _seq);
         return 0;

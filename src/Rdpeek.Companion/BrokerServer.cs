@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.IO.Pipes;
+using System.Security.AccessControl;
 using Rdpeek.Client;
 
 namespace Rdpeek.Companion;
@@ -29,11 +30,7 @@ public sealed class BrokerServer : IDisposable
         {
             try
             {
-                var server = new NamedPipeServerStream(
-                    Broker.PipeName, PipeDirection.In,
-                    NamedPipeServerStream.MaxAllowedServerInstances,
-                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-
+                var server = CreateServer();
                 await server.WaitForConnectionAsync(ct).ConfigureAwait(false);
                 _ = HandleAsync(server);
             }
@@ -60,6 +57,13 @@ public sealed class BrokerServer : IDisposable
                 if (parsed is null) continue;
 
                 var (ev, pid, seq, host) = parsed.Value;
+                try
+                {
+                    File.AppendAllText(Path.Combine(Path.GetTempPath(), "rdpeek-broker.log"),
+                        $"{DateTime.Now:HH:mm:ss.fff}  recv {ev} pid={pid} seq={seq} host='{host}'{Environment.NewLine}");
+                }
+                catch { }
+
                 var key = $"{pid}:{seq}";
                 if (ev == "gone")
                     _states.TryRemove(key, out _);
@@ -76,6 +80,33 @@ public sealed class BrokerServer : IDisposable
         finally
         {
             server.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Create the broker pipe with a Low mandatory integrity label so the plugin
+    /// (medium integrity, launched by mstsc) can write to it even if the companion is
+    /// running elevated. Falls back to a default pipe if ACL setup isn't available.
+    /// </summary>
+    private static NamedPipeServerStream CreateServer()
+    {
+        try
+        {
+            var security = new PipeSecurity();
+            // Full pipe access to Authenticated Users (AU) + Low mandatory label (LW),
+            // no-write-up (NW) — so medium/high callers can write to a low-labeled pipe.
+            security.SetSecurityDescriptorSddlForm("D:(A;;0x1f019f;;;AU)S:(ML;;NW;;;LW)", AccessControlSections.All);
+            return NamedPipeServerStreamAcl.Create(
+                Broker.PipeName, PipeDirection.In,
+                NamedPipeServerStream.MaxAllowedServerInstances,
+                PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 0, 0, security);
+        }
+        catch
+        {
+            return new NamedPipeServerStream(
+                Broker.PipeName, PipeDirection.In,
+                NamedPipeServerStream.MaxAllowedServerInstances,
+                PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         }
     }
 
