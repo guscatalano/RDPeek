@@ -1,16 +1,16 @@
+using System.Drawing;
 using System.Windows.Forms;
 
 namespace Rdpeek.Companion;
 
 /// <summary>
 /// Multi-connection aware status view: one row per open RDP window showing whether its
-/// RDPeek agent is connected (via the broker). A single button copies the one-time
-/// install command to the clipboard — paste it into the remote session once, and every
-/// future connect auto-starts the agent.
+/// RDPeek agent is connected (via the broker). A button copies the one-time install
+/// command to the clipboard — paste it into the remote session once, and every future
+/// connect auto-starts the agent. Layout uses docking/auto-size so it scales at any DPI.
 /// </summary>
 public sealed class MainForm : Form
 {
-    // Paste this into a PowerShell inside the remote session (one-time per machine).
     private const string InstallCommand =
         "irm https://raw.githubusercontent.com/guscatalano/RDPeek/main/tools/install-agent-web.ps1 | iex";
 
@@ -23,33 +23,43 @@ public sealed class MainForm : Form
     public MainForm()
     {
         Text = "RDPeek Companion";
-        Width = 760;
-        Height = 360;
-        MinimumSize = new Size(560, 240);
+        AutoScaleMode = AutoScaleMode.Dpi;
+        ClientSize = new Size(760, 360);
+        MinimumSize = new Size(520, 280);
 
         var copyBtn = new Button
         {
             Text = "Copy agent-install command",
-            Left = 10, Top = 10, Width = 220, Height = 28,
-            Anchor = AnchorStyles.Top | AnchorStyles.Left,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = new Padding(4),
+            Padding = new Padding(8, 4, 8, 4),
         };
         copyBtn.Click += OnCopyInstall;
 
-        var refreshBtn = new Button { Text = "Refresh", Left = 660, Top = 10, Width = 80, Height = 28, Anchor = AnchorStyles.Top | AnchorStyles.Right };
-
-        var hint = new Label
+        var refreshBtn = new Button
         {
-            Text = "Paste it into a PowerShell in the remote session, once. Then every connect auto-starts the agent.",
-            Left = 240, Top = 15, Width = 410, Height = 30, AutoSize = false,
-            Anchor = AnchorStyles.Top | AnchorStyles.Left,
+            Text = "Refresh",
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = new Padding(4),
+            Padding = new Padding(12, 4, 12, 4),
         };
         refreshBtn.Click += (_, _) => RefreshUi();
 
-        _grid.Left = 10;
-        _grid.Top = 48;
-        _grid.Width = 730;
-        _grid.Height = 240;
-        _grid.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+        var topBar = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            WrapContents = false,
+            FlowDirection = FlowDirection.LeftToRight,
+            Padding = new Padding(4),
+        };
+        topBar.Controls.Add(copyBtn);
+        topBar.Controls.Add(refreshBtn);
+
+        _grid.Dock = DockStyle.Fill;
         _grid.AllowUserToAddRows = false;
         _grid.AllowUserToDeleteRows = false;
         _grid.ReadOnly = true;
@@ -60,13 +70,19 @@ public sealed class MainForm : Form
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Agent", HeaderText = "Agent", FillWeight = 30 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Title", HeaderText = "Window", FillWeight = 42 });
 
-        _status.Left = 12;
-        _status.Top = 296;
-        _status.Width = 730;
-        _status.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        _status.Text = "Ready.";
+        _status.Dock = DockStyle.Fill;
+        _status.TextAlign = ContentAlignment.MiddleLeft;
+        _status.Padding = new Padding(6, 0, 6, 0);
+        _status.Text = "Copy the install command, paste it into the remote session once, then connect.";
 
-        Controls.AddRange(new Control[] { copyBtn, hint, refreshBtn, _grid, _status });
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30f));
+        layout.Controls.Add(topBar, 0, 0);
+        layout.Controls.Add(_grid, 0, 1);
+        layout.Controls.Add(_status, 0, 2);
+        Controls.Add(layout);
 
         _broker.Changed += OnBrokerChanged;
         _broker.Start();
