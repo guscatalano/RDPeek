@@ -35,14 +35,14 @@ public sealed class MainForm : Form
         };
         copyBtn.Click += OnCopyInstall;
 
+        var refreshBtn = new Button { Text = "Refresh", Left = 660, Top = 10, Width = 80, Height = 28, Anchor = AnchorStyles.Top | AnchorStyles.Right };
+
         var hint = new Label
         {
             Text = "Paste it into a PowerShell in the remote session, once. Then every connect auto-starts the agent.",
-            Left = 240, Top = 15, Width = 500, AutoSize = false,
-            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Left = 240, Top = 15, Width = 410, Height = 30, AutoSize = false,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left,
         };
-
-        var refreshBtn = new Button { Text = "Refresh", Left = 660, Top = 10, Width = 80, Height = 28, Anchor = AnchorStyles.Top | AnchorStyles.Right };
         refreshBtn.Click += (_, _) => RefreshUi();
 
         _grid.Left = 10;

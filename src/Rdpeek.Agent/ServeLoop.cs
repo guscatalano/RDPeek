@@ -64,7 +64,9 @@ internal static class ServeLoop
         var decoder = new FrameDecoder();
         var router = new EnvelopeRouter(env =>
         {
-            WtsChannel.WriteFrame(h, Frame.Encode(env));
+            var frame = Frame.Encode(env);
+            Logger.Log($"WRITE {frame.Length}B: {Hex(frame, 48)}");
+            WtsChannel.WriteFrame(h, frame);
             return Task.CompletedTask;
         });
         _ = new AgentCore(router);
@@ -80,20 +82,32 @@ internal static class ServeLoop
                 case WtsChannel.ReadStatus.Closed:
                     return; // disconnect — let Run re-open
                 case WtsChannel.ReadStatus.NeedLargerBuffer:
+                    Logger.Log($"read needs larger buffer: {bytes}");
                     buffer = new byte[Math.Max(bytes, buffer.Length * 2)];
                     continue;
                 case WtsChannel.ReadStatus.Data:
+                    Logger.Log($"READ  {bytes}B: {Hex(buffer, Math.Min(bytes, 48))}");
                     try
                     {
                         foreach (var env in decoder.PushEnvelopes(buffer.AsSpan(0, bytes)))
+                        {
+                            Logger.Log($"  decoded {env.BodyCase}");
                             router.Handle(env);
+                        }
                     }
                     catch (Exception ex)
                     {
-                        Logger.Log($"decode/handle error: {ex}");
+                        Logger.Log($"decode error: {ex.Message}");
                     }
                     break;
             }
         }
+    }
+
+    private static string Hex(byte[] buf, int count)
+    {
+        var chars = new System.Text.StringBuilder(count * 3);
+        for (int i = 0; i < count; i++) chars.Append(buf[i].ToString("X2")).Append(' ');
+        return chars.ToString().TrimEnd();
     }
 }
