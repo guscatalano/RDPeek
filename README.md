@@ -36,8 +36,8 @@ Early. What exists and is verified today:
 |---|---|
 | `Rdpeek.Protocol` — framing codec + envelope router | ✅ done (unit + conformance tested) |
 | `rdpeek-doctor` — plugin registration diagnostician | ✅ done (verified against the live registry) |
-| `Rdpeek.Agent` — SysInfo + process collectors, agent core | ✅ collectors verified live; `serve` DVC transport built |
-| `Rdpeek.Plugin` — client COM plugin (`IWTSPlugin`, LocalServer32) | ✅ built; COM activation + `IWTSPlugin` verified; live DVC round-trip pending an RDP session |
+| `Rdpeek.Agent` — SysInfo + process collectors, agent core | ✅ collectors + `serve` DVC transport verified live end-to-end |
+| `Rdpeek.Plugin` — client COM plugin (`IWTSPlugin`, LocalServer32) | ✅ **live DVC round-trip verified** — pulls the remote host's info over the channel |
 | `Rdpeek.Client` — client-side DVC configuration roster | ✅ done, verified live (`rdpeek-plugin channels`) |
 | `Rdpeek.Companion` — multi-connection agent-status view + copies the one-line install command | ✅ built; window enumeration + broker auto-detection verified |
 | Full viewer/dashboard, per-DVC counters, file transport | ⬜ not yet |
