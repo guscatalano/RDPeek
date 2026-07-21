@@ -82,6 +82,16 @@ Undo it with:
 powershell -ExecutionPolicy Bypass -File "\\tsclient\c\<path-to-repo>\tools\unregister-agent-task.ps1"
 ```
 
+#### Clipboard-only variant (no drive redirection)
+
+If `\\tsclient` isn't available (drive redirection off), paste this single line into a
+PowerShell **inside the remote session** — it downloads the agent from the latest
+release and does the same setup (needs internet + clipboard, not drive redirection):
+
+```powershell
+irm https://raw.githubusercontent.com/guscatalano/RDPeek/main/tools/install-agent-web.ps1 | iex
+```
+
 ## Register the client plugin
 
 Register `rdpeek-plugin.exe` on the **client** machine (the one running `mstsc`) so
