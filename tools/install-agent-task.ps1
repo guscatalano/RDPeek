@@ -42,6 +42,15 @@ if (-not $AgentPath -or -not (Test-Path $AgentPath))
 # 2. Copy to a permanent per-user location.
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 $dest = Join-Path $InstallDir 'rdpeek-agent.exe'
+
+# Stop any running agent and wait for its exe to unlock before overwriting.
+Get-Process rdpeek-agent -ErrorAction SilentlyContinue | Stop-Process -Force
+for ($i = 0; $i -lt 25; $i++)
+{
+    try { if (Test-Path $dest) { Remove-Item $dest -Force -ErrorAction Stop }; break }
+    catch { Start-Sleep -Milliseconds 200 }
+}
+
 Copy-Item $AgentPath $dest -Force
 Write-Host "Installed agent -> $dest" -ForegroundColor Green
 

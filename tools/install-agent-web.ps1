@@ -21,6 +21,14 @@ $url        = 'https://github.com/guscatalano/RDPeek/releases/latest/download/rd
 
 New-Item -ItemType Directory -Force -Path $installDir | Out-Null
 
+# Stop any running agent and wait for its exe to unlock (it locks itself while running).
+Get-Process rdpeek-agent -ErrorAction SilentlyContinue | Stop-Process -Force
+for ($i = 0; $i -lt 25; $i++)
+{
+    try { if (Test-Path $dest) { Remove-Item $dest -Force -ErrorAction Stop }; break }
+    catch { Start-Sleep -Milliseconds 200 }
+}
+
 Write-Host "Downloading agent from $url ..."
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
