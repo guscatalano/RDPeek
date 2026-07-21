@@ -21,6 +21,12 @@ public sealed record ProcRow(uint Pid, string Image, string User, string Mem);
 
 public sealed record ChannelRow(string Name, string Kind, string Activation, string Module, string Clsid);
 
+public sealed record NetRow(string Proto, string Local, string Remote, string State, string Process);
+
+public sealed record SessionRow(uint Id, string Station, string User, string State, string Client);
+
+public sealed record ServiceRow(string Name, string Status, string StartType, string Display);
+
 public partial class MainViewModel : ObservableObject
 {
     private const string InstallCommand =
@@ -33,9 +39,13 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<ConnectionRow> Connections { get; } = new();
     public ObservableCollection<ProcRow> Processes { get; } = new();
     public ObservableCollection<ChannelRow> Channels { get; } = new();
+    public ObservableCollection<NetRow> Network { get; } = new();
+    public ObservableCollection<SessionRow> Sessions { get; } = new();
+    public ObservableCollection<ServiceRow> Services { get; } = new();
 
     [ObservableProperty] private ConnectionRow? _selectedConnection;
     [ObservableProperty] private string _hostHeader = "Connect an RDP session to see host details.";
+    [ObservableProperty] private string _perfText = "";
     [ObservableProperty] private string _status = "Starting…";
 
     public MainViewModel(DispatcherQueue dispatcher)
@@ -131,6 +141,26 @@ public partial class MainViewModel : ObservableObject
         if (st?.Procs is { } p)
             foreach (var proc in p.Processes.OrderByDescending(x => x.WorkingSet).Take(200))
                 Processes.Add(new ProcRow(proc.Pid, proc.ImageName, proc.UserName, $"{proc.WorkingSet / 1024 / 1024} MB"));
+
+        Network.Clear();
+        if (st?.Net is { } net)
+            foreach (var e in net.Entries.OrderBy(e => e.State != "LISTEN").ThenBy(e => e.Local))
+                Network.Add(new NetRow(e.Protocol, e.Local, e.Remote, e.State,
+                    string.IsNullOrEmpty(e.Process) ? e.Pid.ToString() : $"{e.Process} ({e.Pid})"));
+
+        Sessions.Clear();
+        if (st?.Sessions is { } sess)
+            foreach (var se in sess.Sessions)
+                Sessions.Add(new SessionRow(se.SessionId, se.Station, se.User, se.State, se.ClientName));
+
+        Services.Clear();
+        if (st?.Services is { } svc)
+            foreach (var sv in svc.Services.OrderBy(x => x.Name))
+                Services.Add(new ServiceRow(sv.Name, sv.Status, sv.StartType, sv.Display));
+
+        PerfText = st?.Perf is { } perf
+            ? string.Join("      ", perf.Counters.Select(c => $"{c.Name}: {c.Value}{(string.IsNullOrEmpty(c.Unit) ? "" : " " + c.Unit)}"))
+            : "";
     }
 
     private void UpdateChannels()

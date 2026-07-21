@@ -27,6 +27,9 @@
                              SelectionChanged="OnNavChanged">
             <muxc:NavigationView.MenuItems>
                 <muxc:NavigationViewItem Content="Dashboard" Tag="dash" IsSelected="True" />
+                <muxc:NavigationViewItem Content="Network" Tag="net" />
+                <muxc:NavigationViewItem Content="Sessions" Tag="sess" />
+                <muxc:NavigationViewItem Content="Services" Tag="svc" />
                 <muxc:NavigationViewItem Content="Channels" Tag="chan" />
             </muxc:NavigationView.MenuItems>
 
@@ -85,12 +88,16 @@
                         </Grid>
                     </Border>
 
-                    <!-- host header -->
+                    <!-- host header + perf strip -->
                     <Border Grid.Row="1" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
                             CornerRadius="8" Padding="14,10">
-                        <TextBlock Text="{x:Bind Vm.HostHeader, Mode=OneWay}" TextWrapping="Wrap"
-                                   FontFamily="Consolas" LineHeight="20" />
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="{x:Bind Vm.HostHeader, Mode=OneWay}" TextWrapping="Wrap"
+                                       FontFamily="Consolas" LineHeight="20" />
+                            <TextBlock Text="{x:Bind Vm.PerfText, Mode=OneWay}" TextWrapping="Wrap"
+                                       FontFamily="Consolas" Opacity="0.85" />
+                        </StackPanel>
                     </Border>
 
                     <!-- processes -->
@@ -186,6 +193,134 @@
                                             <TextBlock Grid.Column="1" Text="{x:Bind Kind}" Opacity="0.8" />
                                             <TextBlock Grid.Column="2" Text="{x:Bind Activation}" Opacity="0.8" />
                                             <TextBlock Grid.Column="3" Text="{x:Bind Module}" TextTrimming="CharacterEllipsis" Opacity="0.8" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- ===================== NETWORK ===================== -->
+                <Grid x:Name="NetView" Visibility="Collapsed">
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                            <Grid Grid.Row="0" Padding="12,8" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="0.24*" /><ColumnDefinition Width="0.24*" />
+                                    <ColumnDefinition Width="0.16*" /><ColumnDefinition Width="0.36*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Local" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="1" Text="Remote" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="2" Text="State" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="3" Text="Process" FontWeight="SemiBold" />
+                            </Grid>
+                            <ListView Grid.Row="1" ItemsSource="{x:Bind Vm.Network}" SelectionMode="None">
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="ListViewItem">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Padding" Value="12,3" /><Setter Property="MinHeight" Value="0" />
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="local:NetRow">
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="0.24*" /><ColumnDefinition Width="0.24*" />
+                                                <ColumnDefinition Width="0.16*" /><ColumnDefinition Width="0.36*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{x:Bind Local}" FontFamily="Consolas" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="1" Text="{x:Bind Remote}" FontFamily="Consolas" Opacity="0.8" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="2" Text="{x:Bind State}" />
+                                            <TextBlock Grid.Column="3" Text="{x:Bind Process}" TextTrimming="CharacterEllipsis" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- ===================== SESSIONS ===================== -->
+                <Grid x:Name="SessView" Visibility="Collapsed">
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                            <Grid Grid.Row="0" Padding="12,8" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="0.08*" /><ColumnDefinition Width="0.18*" />
+                                    <ColumnDefinition Width="0.30*" /><ColumnDefinition Width="0.16*" /><ColumnDefinition Width="0.28*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="ID" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="1" Text="Station" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="2" Text="User" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="3" Text="State" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="4" Text="Client" FontWeight="SemiBold" />
+                            </Grid>
+                            <ListView Grid.Row="1" ItemsSource="{x:Bind Vm.Sessions}" SelectionMode="None">
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="ListViewItem">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Padding" Value="12,4" /><Setter Property="MinHeight" Value="0" />
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="local:SessionRow">
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="0.08*" /><ColumnDefinition Width="0.18*" />
+                                                <ColumnDefinition Width="0.30*" /><ColumnDefinition Width="0.16*" /><ColumnDefinition Width="0.28*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{x:Bind Id}" />
+                                            <TextBlock Grid.Column="1" Text="{x:Bind Station}" />
+                                            <TextBlock Grid.Column="2" Text="{x:Bind User}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="3" Text="{x:Bind State}" />
+                                            <TextBlock Grid.Column="4" Text="{x:Bind Client}" Opacity="0.8" TextTrimming="CharacterEllipsis" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- ===================== SERVICES ===================== -->
+                <Grid x:Name="SvcView" Visibility="Collapsed">
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                            <Grid Grid.Row="0" Padding="12,8" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="0.22*" /><ColumnDefinition Width="0.12*" />
+                                    <ColumnDefinition Width="0.12*" /><ColumnDefinition Width="0.54*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Service" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="1" Text="Status" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="2" Text="Start" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="3" Text="Display name" FontWeight="SemiBold" />
+                            </Grid>
+                            <ListView Grid.Row="1" ItemsSource="{x:Bind Vm.Services}" SelectionMode="None">
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="ListViewItem">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Padding" Value="12,3" /><Setter Property="MinHeight" Value="0" />
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="local:ServiceRow">
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="0.22*" /><ColumnDefinition Width="0.12*" />
+                                                <ColumnDefinition Width="0.12*" /><ColumnDefinition Width="0.54*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="1" Text="{x:Bind Status}" />
+                                            <TextBlock Grid.Column="2" Text="{x:Bind StartType}" Opacity="0.8" />
+                                            <TextBlock Grid.Column="3" Text="{x:Bind Display}" TextTrimming="CharacterEllipsis" Opacity="0.8" />
                                         </Grid>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>

@@ -69,7 +69,72 @@ message Envelope {
     FileChunk          file_chunk          = 64;
     FileAck            file_ack            = 65;
     FileClose          file_close          = 66;
+
+    // -- host inventory --
+    NetConnRequest     net_conn_request     = 70;
+    NetConnList        net_conn_list        = 71;
+    SessionListRequest session_list_request = 72;
+    SessionList        session_list         = 73;
+    ServiceListRequest service_list_request = 74;
+    ServiceList        service_list         = 75;
+    PerfRequest        perf_request         = 76;
+    PerfSnapshot       perf_snapshot        = 77;
   }
+}
+
+// ============================================================================
+// Host inventory: network / sessions / services / performance
+// ============================================================================
+
+message NetConnRequest {}
+
+message NetConnList {
+  message Entry {
+    string protocol   = 1;   // TCP | TCPv6
+    string local      = 2;   // addr:port
+    string remote     = 3;   // addr:port (empty for LISTEN)
+    string state      = 4;   // LISTEN | ESTABLISHED | ...
+    uint32 pid        = 5;
+    string process    = 6;
+  }
+  repeated Entry entries = 1;
+}
+
+message SessionListRequest {}
+
+message SessionList {
+  message Session {
+    uint32 session_id  = 1;
+    string station     = 2;   // WinStation name (console, rdp-tcp#N)
+    string user        = 3;   // DOMAIN\user
+    string state       = 4;   // Active | Connected | Disconnected | Listen | ...
+    string client_name = 5;   // connecting client (for remote sessions)
+  }
+  repeated Session sessions = 1;
+}
+
+message ServiceListRequest {}
+
+message ServiceList {
+  message Service {
+    string name        = 1;   // service name
+    string display     = 2;   // display name
+    string status      = 3;   // Running | Stopped | ...
+    string start_type  = 4;   // Auto | Manual | Disabled | ...
+  }
+  repeated Service services = 1;
+}
+
+message PerfRequest {}
+
+message PerfSnapshot {
+  // Curated host performance counters sampled on the agent (PDH / Win32).
+  message Counter {
+    string name  = 1;   // e.g. "CPU %", "Disk %", "Net recv (Mbps)"
+    double value = 2;
+    string unit  = 3;   // %, Mbps, MB, ...
+  }
+  repeated Counter counters = 1;
 }
 
 // ============================================================================

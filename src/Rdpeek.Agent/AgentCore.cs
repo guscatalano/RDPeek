@@ -44,6 +44,22 @@ internal sealed class AgentCore
                     _ = _router.RespondAsync(new Envelope { ProcessList = list }, env.RequestId);
                     break;
 
+                case Envelope.BodyOneofCase.NetConnRequest:
+                    _ = _router.RespondAsync(new Envelope { NetConnList = NetCollector.Collect() }, env.RequestId);
+                    break;
+
+                case Envelope.BodyOneofCase.SessionListRequest:
+                    _ = _router.RespondAsync(new Envelope { SessionList = SessionCollector.Collect() }, env.RequestId);
+                    break;
+
+                case Envelope.BodyOneofCase.ServiceListRequest:
+                    _ = _router.RespondAsync(new Envelope { ServiceList = ServiceCollector.Collect() }, env.RequestId);
+                    break;
+
+                case Envelope.BodyOneofCase.PerfRequest:
+                    _ = _router.RespondAsync(new Envelope { PerfSnapshot = PerfCollector.Collect() }, env.RequestId);
+                    break;
+
                 // File transfer, counters, and process actions are wired in later milestones.
                 default:
                     break;

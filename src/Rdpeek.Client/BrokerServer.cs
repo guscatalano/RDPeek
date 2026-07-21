@@ -23,6 +23,10 @@ public sealed class BrokerServer : IDisposable
         public string Host = "";
         public SysInfoSnapshot? Sysinfo;
         public ProcessList? Procs;
+        public NetConnList? Net;
+        public SessionList? Sessions;
+        public ServiceList? Services;
+        public PerfSnapshot? Perf;
     }
 
     private readonly ConcurrentDictionary<string, AgentState> _states = new();
@@ -95,6 +99,18 @@ public sealed class BrokerServer : IDisposable
                         break;
                     case "procs":
                         try { st.Procs = ProcessList.Parser.ParseJson(payload); } catch { }
+                        break;
+                    case "net":
+                        try { st.Net = NetConnList.Parser.ParseJson(payload); } catch { }
+                        break;
+                    case "sessions":
+                        try { st.Sessions = SessionList.Parser.ParseJson(payload); } catch { }
+                        break;
+                    case "services":
+                        try { st.Services = ServiceList.Parser.ParseJson(payload); } catch { }
+                        break;
+                    case "perf":
+                        try { st.Perf = PerfSnapshot.Parser.ParseJson(payload); } catch { }
                         break;
                 }
 

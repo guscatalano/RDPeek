@@ -38,9 +38,21 @@ internal static class NativeApi
     // ---- WTS session information ----
     internal enum WTS_INFO_CLASS
     {
-        WTSClientDisplay = 5,
+        WTSUserName = 5,
+        WTSWinStationName = 6,
+        WTSDomainName = 7,
+        WTSConnectState = 8,
         WTSClientName = 10,
+        WTSClientDisplay = 15,
         WTSClientProtocolType = 16,
+    }
+
+    internal static string QuerySessionString(uint sessionId, WTS_INFO_CLASS infoClass)
+    {
+        if (!WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, sessionId, infoClass, out var p, out _))
+            return "";
+        try { return Marshal.PtrToStringUni(p) ?? ""; }
+        finally { WTSFreeMemory(p); }
     }
 
     [StructLayout(LayoutKind.Sequential)]

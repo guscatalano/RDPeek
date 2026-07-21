@@ -55,8 +55,10 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
                 Logger.Log($"unexpected reply to Hello: {caps?.BodyCase.ToString() ?? "none"}");
 
             bool loggedHost = false;
+            int cycle = 0;
             while (!_cts.IsCancellationRequested)
             {
+                // Every cycle: host info, processes, network, perf (dynamic).
                 var snap = await RequestAsync(new Envelope { SysinfoRequest = new SysInfoRequest() });
                 if (snap is null) break; // channel dead / timed out
                 if (snap.BodyCase == Envelope.BodyOneofCase.SysinfoSnapshot)
@@ -69,13 +71,29 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
                         loggedHost = true;
                     }
                     Broker.Report("connected", Environment.ProcessId, _seq, _host);
-                    Broker.Report("sysinfo", Environment.ProcessId, _seq, JsonFormatter.Default.Format(s));
+                    Push("sysinfo", s);
                 }
 
                 var procs = await RequestAsync(new Envelope { ProcessListRequest = new ProcessListRequest() });
-                if (procs?.BodyCase == Envelope.BodyOneofCase.ProcessList)
-                    Broker.Report("procs", Environment.ProcessId, _seq, JsonFormatter.Default.Format(procs.ProcessList));
+                if (procs?.BodyCase == Envelope.BodyOneofCase.ProcessList) Push("procs", procs.ProcessList);
 
+                var net = await RequestAsync(new Envelope { NetConnRequest = new NetConnRequest() });
+                if (net?.BodyCase == Envelope.BodyOneofCase.NetConnList) Push("net", net.NetConnList);
+
+                var perf = await RequestAsync(new Envelope { PerfRequest = new PerfRequest() });
+                if (perf?.BodyCase == Envelope.BodyOneofCase.PerfSnapshot) Push("perf", perf.PerfSnapshot);
+
+                // Every 3rd cycle (~9s): sessions + services (change slowly, bigger payloads).
+                if (cycle % 3 == 0)
+                {
+                    var sess = await RequestAsync(new Envelope { SessionListRequest = new SessionListRequest() });
+                    if (sess?.BodyCase == Envelope.BodyOneofCase.SessionList) Push("sessions", sess.SessionList);
+
+                    var svc = await RequestAsync(new Envelope { ServiceListRequest = new ServiceListRequest() });
+                    if (svc?.BodyCase == Envelope.BodyOneofCase.ServiceList) Push("services", svc.ServiceList);
+                }
+
+                cycle++;
                 try { await Task.Delay(3000, _cts.Token); } catch { break; }
             }
         }
@@ -84,6 +102,9 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
             Logger.Log($"poll loop error: {ex.Message}");
         }
     }
+
+    private void Push(string kind, IMessage message)
+        => Broker.Report(kind, Environment.ProcessId, _seq, JsonFormatter.Default.Format(message));
 
     private async Task<Envelope?> RequestAsync(Envelope request)
     {
