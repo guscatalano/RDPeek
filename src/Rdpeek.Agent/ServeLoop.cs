@@ -61,12 +61,12 @@ internal static class ServeLoop
 
     private static void Serve(IntPtr h, ManualResetEventSlim stop)
     {
+        var reassembler = new ChannelPduReassembler();
         var decoder = new FrameDecoder();
         var router = new EnvelopeRouter(env =>
         {
             var frame = Frame.Encode(env);
-            Logger.Log($"WRITE {frame.Length}B: {Hex(frame, 48)}");
-            WtsChannel.WriteFrame(h, frame);
+            WtsChannel.WriteMessage(h, frame); // wraps in CHANNEL_PDU_HEADER
             return Task.CompletedTask;
         });
         _ = new AgentCore(router);
@@ -82,18 +82,16 @@ internal static class ServeLoop
                 case WtsChannel.ReadStatus.Closed:
                     return; // disconnect — let Run re-open
                 case WtsChannel.ReadStatus.NeedLargerBuffer:
-                    Logger.Log($"read needs larger buffer: {bytes}");
                     buffer = new byte[Math.Max(bytes, buffer.Length * 2)];
                     continue;
                 case WtsChannel.ReadStatus.Data:
-                    Logger.Log($"READ  {bytes}B: {Hex(buffer, Math.Min(bytes, 48))}");
+                    // Strip CHANNEL_PDU_HEADER chunks → complete message → our frame → Envelope.
+                    var message = reassembler.Push(buffer, bytes);
+                    if (message is null) break;
                     try
                     {
-                        foreach (var env in decoder.PushEnvelopes(buffer.AsSpan(0, bytes)))
-                        {
-                            Logger.Log($"  decoded {env.BodyCase}");
+                        foreach (var env in decoder.PushEnvelopes(message))
                             router.Handle(env);
-                        }
                     }
                     catch (Exception ex)
                     {
@@ -102,12 +100,5 @@ internal static class ServeLoop
                     break;
             }
         }
-    }
-
-    private static string Hex(byte[] buf, int count)
-    {
-        var chars = new System.Text.StringBuilder(count * 3);
-        for (int i = 0; i < count; i++) chars.Append(buf[i].ToString("X2")).Append(' ');
-        return chars.ToString().TrimEnd();
     }
 }

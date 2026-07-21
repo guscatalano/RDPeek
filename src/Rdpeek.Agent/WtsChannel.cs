@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 
 namespace Rdpeek.Agent;
@@ -14,6 +15,14 @@ internal static class WtsChannel
 
     private const int ERROR_INSUFFICIENT_BUFFER = 122;
     private const int ERROR_IO_INCOMPLETE = 996;
+
+    // Virtual-channel chunking (MS-RDPBCGR CHANNEL_PDU_HEADER: length + flags).
+    // The WTS API exposes this; the client's DVC COM API hides it. We must strip it
+    // on read and add it on write.
+    public const int ChannelPduHeaderSize = 8;
+    private const uint CHANNEL_FLAG_FIRST = 0x01;
+    private const uint CHANNEL_FLAG_LAST = 0x02;
+    private const int CHANNEL_CHUNK_LENGTH = 1600;
 
     [DllImport("wtsapi32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
     private static extern IntPtr WTSVirtualChannelOpenEx(uint sessionId, string pVirtualName, uint flags);
@@ -59,17 +68,71 @@ internal static class WtsChannel
         };
     }
 
-    /// <summary>Write a full frame, looping until all bytes are accepted.</summary>
-    public static bool WriteFrame(IntPtr h, byte[] frame)
+    /// <summary>
+    /// Write a message wrapped in CHANNEL_PDU_HEADER chunk(s) — the framing the client's
+    /// DVC layer expects and strips. Small messages go in a single FIRST|LAST chunk.
+    /// </summary>
+    public static bool WriteMessage(IntPtr h, byte[] data)
     {
         int offset = 0;
-        while (offset < frame.Length)
+        do
         {
-            byte[] chunk = offset == 0 ? frame : frame[offset..];
+            int chunk = Math.Min(CHANNEL_CHUNK_LENGTH, data.Length - offset);
+            uint flags = 0;
+            if (offset == 0) flags |= CHANNEL_FLAG_FIRST;
+            if (offset + chunk >= data.Length) flags |= CHANNEL_FLAG_LAST;
+
+            var pdu = new byte[ChannelPduHeaderSize + chunk];
+            BinaryPrimitives.WriteUInt32LittleEndian(pdu, (uint)data.Length); // total message length
+            BinaryPrimitives.WriteUInt32LittleEndian(pdu.AsSpan(4), flags);
+            Array.Copy(data, offset, pdu, ChannelPduHeaderSize, chunk);
+
+            if (!WriteRaw(h, pdu)) return false;
+            offset += chunk;
+        }
+        while (offset < data.Length);
+        return true;
+    }
+
+    private static bool WriteRaw(IntPtr h, byte[] bytes)
+    {
+        int offset = 0;
+        while (offset < bytes.Length)
+        {
+            byte[] chunk = offset == 0 ? bytes : bytes[offset..];
             if (!WTSVirtualChannelWrite(h, chunk, (uint)chunk.Length, out uint written) || written == 0)
                 return false;
             offset += (int)written;
         }
         return true;
+    }
+}
+
+/// <summary>
+/// Reassembles CHANNEL_PDU_HEADER-chunked channel data (from WTSVirtualChannelRead)
+/// back into complete messages using the FIRST/LAST flags.
+/// </summary>
+internal sealed class ChannelPduReassembler
+{
+    private readonly List<byte> _buffer = new();
+
+    /// <summary>Feed one raw read; returns a complete message when a LAST chunk arrives.</summary>
+    public byte[]? Push(byte[] raw, int count)
+    {
+        if (count < WtsChannel.ChannelPduHeaderSize) return null; // malformed / too small
+
+        uint flags = BinaryPrimitives.ReadUInt32LittleEndian(raw.AsSpan(4));
+        if ((flags & 0x01) != 0) _buffer.Clear();                 // CHANNEL_FLAG_FIRST
+
+        for (int i = WtsChannel.ChannelPduHeaderSize; i < count; i++)
+            _buffer.Add(raw[i]);
+
+        if ((flags & 0x02) != 0)                                  // CHANNEL_FLAG_LAST
+        {
+            var message = _buffer.ToArray();
+            _buffer.Clear();
+            return message;
+        }
+        return null;
     }
 }
