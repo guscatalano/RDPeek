@@ -63,6 +63,25 @@ rdpeek-agent serve
 Opens `dvc::diag::inspector` and serves the collectors, re-opening across
 disconnect/reconnect.
 
+### Recommended: auto-start the agent (one command, once per machine)
+
+On a machine **you own**, run this **once inside the remote session** (with drive
+redirection on, so `\\tsclient` resolves) — replace the path with your repo location:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "\\tsclient\c\<path-to-repo>\tools\install-agent-task.ps1"
+```
+
+It copies the agent locally, registers a scheduled task triggered **on RDP connect**
+that runs `rdpeek-agent serve` in your interactive session, and starts it now. After
+this, **every future connection auto-starts the agent** — no keystrokes, no manual
+steps, normal desktop. (No admin needed; per-user task + per-user folder.)
+
+Undo it with:
+```powershell
+powershell -ExecutionPolicy Bypass -File "\\tsclient\c\<path-to-repo>\tools\unregister-agent-task.ps1"
+```
+
 ## Register the client plugin
 
 Register `rdpeek-plugin.exe` on the **client** machine (the one running `mstsc`) so

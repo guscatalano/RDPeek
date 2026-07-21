@@ -39,9 +39,9 @@ public sealed class MainForm : Form
         _winR.Width = 660;
         _winR.AutoSize = false;
         _winR.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-        _winR.Checked = true; // default: open the session's Run dialog with Win+R
-        _winR.Text = "Use Win+R to open Run in the session (set mstsc Keyboard → “On the remote computer”, or go full-screen). " +
-                     "Unchecked: type into a shell you focused in the session. Needs Drives redirection for \\\\tsclient.";
+        _winR.Checked = false; // windowed sessions can't forward Win+R; default to typing into a focused shell
+        _winR.Text = "Win+R (ONLY works FULL-SCREEN). Windowed: leave unchecked — open a PowerShell IN the session, " +
+                     "focus it, then click; the command is typed into it. Needs Drives redirection for \\\\tsclient.";
 
         _grid.Left = 10;
         _grid.Top = 70;
