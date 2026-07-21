@@ -132,13 +132,21 @@ public sealed class MainForm : Form
 
     private string AgentStatusFor(RdpWindow w, IReadOnlyList<BrokerServer.AgentState> states)
     {
-        var connected = states.FirstOrDefault(s =>
-            s.Status == "connected" && !string.IsNullOrEmpty(s.Host) &&
-            s.Host.Equals(w.Host, StringComparison.OrdinalIgnoreCase));
-        if (connected is not null) return $"✓ {connected.Host}";
+        var connected = states.Where(s => s.Status == "connected").ToList();
+
+        // Prefer an exact host match (window title host == remote machine name)…
+        var byHost = connected.FirstOrDefault(s =>
+            !string.IsNullOrEmpty(s.Host) && s.Host.Equals(w.Host, StringComparison.OrdinalIgnoreCase));
+        if (byHost is not null) return $"✓ {byHost.Host}";
+
+        // …but the mstsc window title (what you connected to — maybe an IP or saved
+        // name) often differs from the remote machine name. With a single connection,
+        // correlate directly.
+        if (_windows.Count == 1 && connected.Count == 1)
+            return $"✓ {(string.IsNullOrEmpty(connected[0].Host) ? "connected" : connected[0].Host)}";
 
         int awaiting = states.Count(s => s.Status == "listening");
-        if (awaiting > 0 && _windows.Count == 1) return "⚠ no agent";
+        if (_windows.Count == 1 && connected.Count == 0 && awaiting > 0) return "⚠ no agent";
         return "—";
     }
 
