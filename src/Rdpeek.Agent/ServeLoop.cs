@@ -15,6 +15,10 @@ internal static class ServeLoop
 
     public static int Run()
     {
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            Logger.Log($"UNHANDLED: {e.ExceptionObject}");
+
+        Logger.Log($"serve start (pid {Environment.ProcessId}, session {Environment.GetEnvironmentVariable("SESSIONNAME")})");
         Console.WriteLine($"rdpeek-agent: serving on '{InspectorChannel}' (Ctrl+C to stop)");
         var stop = new ManualResetEventSlim(false);
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Set(); };
@@ -29,18 +33,29 @@ internal static class ServeLoop
                 continue;
             }
 
+            Logger.Log("channel open — client connected.");
             Console.WriteLine("channel open — client connected.");
-            try { Serve(h, stop); }
-            finally { WtsChannel.Close(h); }
+            try
+            {
+                Serve(h, stop);
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"serve loop error: {ex}");
+            }
+            finally
+            {
+                WtsChannel.Close(h);
+            }
 
             if (!stop.IsSet)
             {
-                Console.WriteLine("channel closed — awaiting reconnect.");
+                Logger.Log("channel closed — awaiting reconnect.");
                 stop.Wait(1000);
             }
         }
 
-        Console.WriteLine("rdpeek-agent: stopped.");
+        Logger.Log("serve stopped.");
         return 0;
     }
 
@@ -68,8 +83,15 @@ internal static class ServeLoop
                     buffer = new byte[Math.Max(bytes, buffer.Length * 2)];
                     continue;
                 case WtsChannel.ReadStatus.Data:
-                    foreach (var env in decoder.PushEnvelopes(buffer.AsSpan(0, bytes)))
-                        router.Handle(env);
+                    try
+                    {
+                        foreach (var env in decoder.PushEnvelopes(buffer.AsSpan(0, bytes)))
+                            router.Handle(env);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Log($"decode/handle error: {ex}");
+                    }
                     break;
             }
         }

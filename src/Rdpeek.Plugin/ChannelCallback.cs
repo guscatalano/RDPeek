@@ -45,16 +45,25 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
             {
                 Hello = new Hello { ProtocolVersion = 1, ClientBuild = "rdpeek-plugin/0.1" },
             });
-            Logger.Log($"agent capabilities: build={caps.Capabilities.AgentBuild} " +
-                       $"sysinfo={caps.Capabilities.Sysinfo} processes={caps.Capabilities.ProcessList}");
+            if (caps.BodyCase == Envelope.BodyOneofCase.Capabilities)
+                Logger.Log($"agent capabilities: build={caps.Capabilities.AgentBuild} " +
+                           $"sysinfo={caps.Capabilities.Sysinfo} processes={caps.Capabilities.ProcessList}");
+            else
+                Logger.Log($"unexpected reply to Hello: {caps.BodyCase} {caps.Error?.Message}");
 
             var snap = await _router.RequestAsync(new Envelope { SysinfoRequest = new SysInfoRequest() });
-            var s = snap.SysinfoSnapshot;
-            Logger.Log($"remote host: {s.HostName} — {s.OsProductName} build {s.OsBuild}.{s.OsUbr} " +
-                       $"({s.OsDisplayVer}), CPU {s.CpuName} @ {s.CpuPercent}%, up {s.UptimeMs / 1000}s");
-
-            // Re-report with the resolved host so the companion can match this to its window.
-            Broker.Report("connected", Environment.ProcessId, _seq, s.HostName);
+            if (snap.BodyCase == Envelope.BodyOneofCase.SysinfoSnapshot)
+            {
+                var s = snap.SysinfoSnapshot;
+                Logger.Log($"remote host: {s.HostName} — {s.OsProductName} build {s.OsBuild}.{s.OsUbr} " +
+                           $"({s.OsDisplayVer}), CPU {s.CpuName} @ {s.CpuPercent}%, up {s.UptimeMs / 1000}s");
+                // Re-report with the resolved host so the companion can match this to its window.
+                Broker.Report("connected", Environment.ProcessId, _seq, s.HostName);
+            }
+            else
+            {
+                Logger.Log($"unexpected reply to SysInfoRequest: {snap.BodyCase} {snap.Error?.Message}");
+            }
         }
         catch (Exception ex)
         {

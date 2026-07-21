@@ -25,25 +25,43 @@ internal sealed class AgentCore
 
     private void Handle(Envelope env)
     {
-        switch (env.BodyCase)
+        // A failure in any collector or channel write must NOT crash the agent — log it,
+        // reply with an Error if we can, and keep serving.
+        try
         {
-            case Envelope.BodyOneofCase.Hello:
-                _ = _router.RespondAsync(new Envelope { Capabilities = Capabilities() }, env.RequestId);
-                break;
+            switch (env.BodyCase)
+            {
+                case Envelope.BodyOneofCase.Hello:
+                    _ = _router.RespondAsync(new Envelope { Capabilities = Capabilities() }, env.RequestId);
+                    break;
 
-            case Envelope.BodyOneofCase.SysinfoRequest:
-                // One-shot response; interval subscriptions are added with the transport loop.
-                _ = _router.RespondAsync(new Envelope { SysinfoSnapshot = SysInfoCollector.Collect() }, env.RequestId);
-                break;
+                case Envelope.BodyOneofCase.SysinfoRequest:
+                    _ = _router.RespondAsync(new Envelope { SysinfoSnapshot = SysInfoCollector.Collect() }, env.RequestId);
+                    break;
 
-            case Envelope.BodyOneofCase.ProcessListRequest:
-                var list = ProcessCollector.Collect(env.ProcessListRequest.AllSessions, _sessionId);
-                _ = _router.RespondAsync(new Envelope { ProcessList = list }, env.RequestId);
-                break;
+                case Envelope.BodyOneofCase.ProcessListRequest:
+                    var list = ProcessCollector.Collect(env.ProcessListRequest.AllSessions, _sessionId);
+                    _ = _router.RespondAsync(new Envelope { ProcessList = list }, env.RequestId);
+                    break;
 
-            // File transfer, counters, and process actions are wired in later milestones.
-            default:
-                break;
+                // File transfer, counters, and process actions are wired in later milestones.
+                default:
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"handler error for {env.BodyCase}: {ex}");
+            try
+            {
+                _ = _router.RespondAsync(
+                    new Envelope { Error = new Error { Code = Error.Types.Code.Unknown, Message = ex.Message } },
+                    env.RequestId);
+            }
+            catch (Exception ex2)
+            {
+                Logger.Log($"failed to send error response: {ex2.Message}");
+            }
         }
     }
 
