@@ -9,7 +9,7 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
-        // --diag: enumerate RDP windows + show the bootstrap command (no UI).
+        // --diag: enumerate RDP windows (no UI).
         if (args.Any(a => a.Equals("--diag", StringComparison.OrdinalIgnoreCase)))
         {
             var sb = new StringBuilder();
@@ -17,9 +17,6 @@ internal static class Program
             sb.AppendLine($"Detected RDP windows: {windows.Count}");
             foreach (var w in windows)
                 sb.AppendLine($"  host='{w.Host}'  pid={w.Pid}  hwnd=0x{w.Hwnd:X}  title='{w.Title}'");
-            sb.AppendLine();
-            sb.AppendLine("Sample bootstrap command for C:\\Tools\\rdpeek-agent.exe:");
-            sb.AppendLine("  " + InputBootstrap.BuildCommand(@"C:\Tools\rdpeek-agent.exe"));
 
             File.WriteAllText(Path.Combine(Path.GetTempPath(), "rdpeek-companion-diag.txt"), sb.ToString());
             return;

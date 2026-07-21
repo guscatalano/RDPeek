@@ -39,7 +39,7 @@ Early. What exists and is verified today:
 | `Rdpeek.Agent` — SysInfo + process collectors, agent core | ✅ collectors verified live; `serve` DVC transport built |
 | `Rdpeek.Plugin` — client COM plugin (`IWTSPlugin`, LocalServer32) | ✅ built; COM activation + `IWTSPlugin` verified; live DVC round-trip pending an RDP session |
 | `Rdpeek.Client` — client-side DVC configuration roster | ✅ done, verified live (`rdpeek-plugin channels`) |
-| `Rdpeek.Companion` — multi-connection helper, auto-detect + one-click agent bootstrap | ✅ built; window enumeration, broker auto-detection, and command builder verified; input injection build-verified, live test pending |
+| `Rdpeek.Companion` — multi-connection agent-status view + copies the one-line install command | ✅ built; window enumeration + broker auto-detection verified |
 | Full viewer/dashboard, per-DVC counters, file transport | ⬜ not yet |
 
 The per-DVC **performance counters** RDPeek will consume are not yet released in

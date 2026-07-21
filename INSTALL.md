@@ -65,31 +65,21 @@ disconnect/reconnect.
 
 ### Recommended: auto-start the agent (one command, once per machine)
 
-On a machine **you own**, run this **once inside the remote session** (with drive
-redirection on, so `\\tsclient` resolves) — replace the path with your repo location:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File "\\tsclient\c\<path-to-repo>\tools\install-agent-task.ps1"
-```
-
-It copies the agent locally, registers a scheduled task triggered **on RDP connect**
-that runs `rdpeek-agent serve` in your interactive session, and starts it now. After
-this, **every future connection auto-starts the agent** — no keystrokes, no manual
-steps, normal desktop. (No admin needed; per-user task + per-user folder.)
-
-Undo it with:
-```powershell
-powershell -ExecutionPolicy Bypass -File "\\tsclient\c\<path-to-repo>\tools\unregister-agent-task.ps1"
-```
-
-#### Clipboard-only variant (no drive redirection)
-
-If `\\tsclient` isn't available (drive redirection off), paste this single line into a
-PowerShell **inside the remote session** — it downloads the agent from the latest
-release and does the same setup (needs internet + clipboard, not drive redirection):
+On a machine **you own**, paste this single line into a PowerShell **inside the remote
+session** (the RDPeek Companion has a button that copies it for you):
 
 ```powershell
 irm https://raw.githubusercontent.com/guscatalano/RDPeek/main/tools/install-agent-web.ps1 | iex
+```
+
+It downloads the agent from the latest release, registers a scheduled task triggered
+**on RDP connect** that runs `rdpeek-agent serve` in your session, and starts it now.
+After this, **every future connection auto-starts the agent** — no keystrokes, no drive
+redirection, normal desktop. (Needs internet + clipboard; no admin; per-user task/folder.)
+
+Undo it any time:
+```powershell
+irm https://raw.githubusercontent.com/guscatalano/RDPeek/main/tools/uninstall-agent-web.ps1 | iex
 ```
 
 ## Register the client plugin
