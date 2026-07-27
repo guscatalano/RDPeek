@@ -32,6 +32,9 @@ public sealed record ServiceRow(string Name, string Status, string StartType, st
 /// <summary>Live traffic on one remote DVC, as measured on the session host.</summary>
 public sealed record DvcRow(string Name, string Sent, string Received, string SendRate, string RecvRate, string Rtt);
 
+/// <summary>One RemoteFX link/graphics counter, as Windows names it.</summary>
+public sealed record LinkRow(string Name, string Value, string Instance);
+
 public partial class MainViewModel : ObservableObject
 {
     private const string InstallCommand =
@@ -48,11 +51,14 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<SessionRow> Sessions { get; } = new();
     public ObservableCollection<ServiceRow> Services { get; } = new();
     public ObservableCollection<DvcRow> DvcTraffic { get; } = new();
+    public ObservableCollection<LinkRow> LinkQuality { get; } = new();
 
     [ObservableProperty] private ConnectionRow? _selectedConnection;
     [ObservableProperty] private string _hostHeader = "Connect an RDP session to see host details.";
     [ObservableProperty] private string _perfText = "";
     [ObservableProperty] private string _dvcNote = "Waiting for the agent to report channel traffic…";
+    [ObservableProperty] private string _clientMeasured = "";
+    [ObservableProperty] private string _linkNote = "";
     [ObservableProperty] private string _status = "Starting…";
 
     public MainViewModel(DispatcherQueue dispatcher)
@@ -165,11 +171,64 @@ public partial class MainViewModel : ObservableObject
             foreach (var sv in svc.Services.OrderBy(x => x.Name))
                 Services.Add(new ServiceRow(sv.Name, sv.Status, sv.StartType, sv.Display));
 
+        // An older agent leaves group empty; treat that as host vitals.
         PerfText = st?.Perf is { } perf
-            ? string.Join("      ", perf.Counters.Select(c => $"{c.Name}: {c.Value}{(string.IsNullOrEmpty(c.Unit) ? "" : " " + c.Unit)}"))
+            ? string.Join("      ", perf.Counters
+                .Where(c => c.Group is "" or "host")
+                .Select(c => $"{c.Name}: {c.Value}{(string.IsNullOrEmpty(c.Unit) ? "" : " " + c.Unit)}"))
             : "";
 
         UpdateDvcTraffic(st?.Counters);
+        UpdateLinkQuality(st?.Perf);
+        UpdateClientMeasured(st?.Link);
+    }
+
+    /// <summary>
+    /// RemoteFX Network + Graphics, collected by the agent because rdpcorets.dll only
+    /// instances those counters on the machine hosting the session.
+    /// </summary>
+    private void UpdateLinkQuality(PerfSnapshot? perf)
+    {
+        LinkQuality.Clear();
+
+        var counters = perf?.Counters.Where(c => c.Group is "link" or "graphics").ToList();
+        if (counters is null || counters.Count == 0)
+        {
+            LinkNote = perf is null
+                ? "Waiting for the agent…"
+                : "The RemoteFX counter sets reported no instances. They exist only on the session " +
+                  "host, and only while a session is active.";
+            return;
+        }
+
+        foreach (var c in counters)
+            LinkQuality.Add(new LinkRow(
+                c.Name,
+                $"{c.Value}{(string.IsNullOrEmpty(c.Unit) ? "" : " " + c.Unit)}",
+                c.Instance));
+
+        LinkNote = "Measured on the session host (RemoteFX Network / Graphics). Units are as " +
+                   "Windows reports them — the counter set does not document them consistently.";
+    }
+
+    /// <summary>
+    /// What the plugin measured for itself, to sit next to the agent's numbers for the
+    /// same channel. Divergence is the point: server RTT is the network, this is the
+    /// network plus whatever is queueing in the DVC.
+    /// </summary>
+    private void UpdateClientMeasured(ClientLink? link)
+    {
+        if (link is null)
+        {
+            ClientMeasured = "";
+            return;
+        }
+
+        string loss = link.PingTimeouts > 0 ? $"  ·  {link.PingTimeouts}/{link.Pings} pings lost" : "";
+        ClientMeasured =
+            $"Client-measured on {link.Channel}:  RTT {link.RttMsLast:0.0} ms " +
+            $"(min {link.RttMsMin:0.0}, avg {link.RttMsAvg:0.0})  ·  " +
+            $"sent {Bytes(link.BytesSent)}  ·  received {Bytes(link.BytesReceived)}{loss}";
     }
 
     /// <summary>

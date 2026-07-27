@@ -128,11 +128,17 @@ independent; sequence by demand.
    to summing `Microsoft.Windows.RemoteDesktop.ServerBase` ETW write-flush events
    (`source: "etw"`, send direction only, needs admin) — the RDP_DVC_Watcher
    approach, merged in.
-   **Client-side is a dead end for per-channel bytes**, also settled by
-   inspection: that ETW provider ships only in `rdpserverbase.dll`, and the
-   client providers in `mstscax.dll`/`rdpbase.dll` report transport byte counts
-   without a channel name. `rdpeek-doctor dvcprobe` exists to re-check that on
-   any build.
+   **Client-side is a dead end for perfmon generally**, also settled by
+   inspection: enumerating every perflib V2 provider found no RDP counter set
+   owned by a client binary (`rdpcorets.dll` owns all three; `lsm.dll` owns
+   `Terminal Services`, which counts sessions this machine *hosts*). The ETW
+   provider ships only in `rdpserverbase.dll`, and the client providers in
+   `mstscax.dll`/`rdpbase.dll` report transport byte counts without a channel
+   name. `rdpeek-doctor dvcprobe` exists to re-check that on any build.
+   Consequence: `RemoteFX Network`/`Graphics` are collected by the **agent** and
+   relayed as `PerfSnapshot` counters grouped `link`/`graphics`, and the only
+   genuine client-side measurement is the plugin timing its own channel
+   (`ClientLink`: stopwatch RTT + bytes at the COM boundary).
 2. **Base language** — C++ vs. .NET 8 advanced sample for the agent.
 3. **Fault-injection proxy** — v1 scope or explicit follow-on? (It's the heaviest
    single component.)

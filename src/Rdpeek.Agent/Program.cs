@@ -133,8 +133,17 @@ static void RunSelfTest()
 
     Console.WriteLine();
     Console.WriteLine("== Perf ==");
-    foreach (var c in PerfCollector.Collect().Counters)
+    var counters = PerfCollector.Collect().Counters;
+    foreach (var c in counters.Where(c => c.Group is "" or "host"))
         Console.WriteLine($"  {c.Name,-20} {c.Value} {c.Unit}");
+
+    Console.WriteLine();
+    Console.WriteLine("== Link quality (RemoteFX — session host only) ==");
+    var link = counters.Where(c => c.Group is "link" or "graphics").ToList();
+    if (link.Count == 0)
+        Console.WriteLine("  No instances. Expected unless this machine is hosting the RDP session.");
+    foreach (var c in link)
+        Console.WriteLine($"  [{c.Group,-8}] {Trim(c.Name, 52),-52} {c.Value} {c.Unit}".TrimEnd());
 
     Console.WriteLine();
     Console.WriteLine($"== DVC traffic (source: {DvcCounters.SourceName}) ==");

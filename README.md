@@ -41,6 +41,8 @@ Early. What exists and is verified today:
 | `Rdpeek.Client` — client-side DVC configuration roster | ✅ done, verified live (`rdpeek-plugin channels`) |
 | `Rdpeek.Companion.WinUI` — dashboard: agent status, host header, processes, host inventory | ✅ verified live — host info & processes stream from the agent over the DVC |
 | Per-DVC traffic counters — agent collector + "DVC traffic" tab | ✅ built; perfmon source verified on build 26100 (reports "no channels open" off-host, as expected) |
+| Link quality — RemoteFX Network/Graphics relayed by the agent + "Link" tab | ✅ built; PDH instance read verified, awaiting a live host to show values |
+| Client-measured RTT + own-channel bytes (`ClientLink`) | ✅ built — shown next to the agent's numbers for the same channel |
 | Full viewer/dashboard, file transport | ⬜ not yet |
 
 ### Per-DVC traffic
@@ -53,11 +55,17 @@ server's ETW write-flush events, the approach merged in from
 [RDP_DVC_Watcher](https://github.com/guscatalano/RDP_DVC_Watcher) (send
 direction only, partial, needs Administrator).
 
-Both sources are **server-side**, so they only produce numbers from inside the
-session — that is why they live in the agent. The client has no per-channel
-equivalent: mstsc's own ETW providers report transport byte counts without ever
-naming a channel. `rdpeek-doctor dvcprobe` re-checks that on any build.
-See [`DESIGN.md`](DESIGN.md) §6.4 for the evidence.
+The agent also relays **link quality** — the `RemoteFX Network` and
+`RemoteFX Graphics` sets: RTT, bandwidth, loss, retransmits, and frames skipped
+split by whose fault it was (server, network, or client).
+
+All of it is **server-side**, which is not a choice: no RDP counter set on Windows
+is owned by a client binary, and mstsc publishes no perfmon counters at all. What
+the client *can* measure is its own channel, so the plugin times round-trips with a
+local stopwatch and counts its own bytes; those sit next to the agent's numbers for
+the same channel, and the gap between them is DVC queueing rather than network.
+`rdpeek-doctor dvcprobe` re-checks the client side on any build.
+See [`DESIGN.md`](DESIGN.md) §6.4–6.5 for the evidence.
 
 ## Build & test
 

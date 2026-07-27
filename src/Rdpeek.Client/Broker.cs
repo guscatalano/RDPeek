@@ -9,7 +9,7 @@ namespace Rdpeek.Client;
 ///
 /// Wire format is one line per message: <c>kind|pid|seq|payload</c>
 ///   kind: listening | connected | gone | sysinfo | procs | net | sessions | services
-///         | perf | counters
+///         | perf | counters | link
 ///   pid/seq: identify the plugin process + per-connection instance
 ///   payload: host name (status kinds) or single-line JSON (sysinfo/procs)
 /// The payload is the remainder of the line, so it may itself contain '|'.

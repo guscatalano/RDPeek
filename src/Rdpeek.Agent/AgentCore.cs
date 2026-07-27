@@ -35,6 +35,12 @@ internal sealed class AgentCore
                     _ = _router.RespondAsync(new Envelope { Capabilities = Capabilities() }, env.RequestId);
                     break;
 
+                // Echo verbatim. The client times the round trip on its own clock, so
+                // nothing here may depend on the two machines' clocks agreeing.
+                case Envelope.BodyOneofCase.Ping:
+                    _ = _router.RespondAsync(new Envelope { Ping = new Ping(env.Ping) }, env.RequestId);
+                    break;
+
                 case Envelope.BodyOneofCase.SysinfoRequest:
                     _ = _router.RespondAsync(new Envelope { SysinfoSnapshot = SysInfoCollector.Collect() }, env.RequestId);
                     break;

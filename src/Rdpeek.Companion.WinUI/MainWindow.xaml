@@ -32,6 +32,7 @@
                 <muxc:NavigationViewItem Content="Services" Tag="svc" />
                 <muxc:NavigationViewItem Content="Channels" Tag="chan" />
                 <muxc:NavigationViewItem Content="DVC traffic" Tag="dvc" />
+                <muxc:NavigationViewItem Content="Link" Tag="link" />
             </muxc:NavigationView.MenuItems>
 
             <Grid Margin="0,12,0,0">
@@ -214,8 +215,13 @@
                             </Grid.RowDefinitions>
                             <TextBlock Grid.Row="0" Margin="12,10,12,2" Opacity="0.8" TextWrapping="Wrap"
                                        Text="Live traffic per dynamic virtual channel, measured by the agent on the remote session host. Sent = host → client." />
-                            <TextBlock Grid.Row="1" Margin="12,0,12,8" Opacity="0.65" TextWrapping="Wrap"
-                                       Text="{x:Bind Vm.DvcNote, Mode=OneWay}" />
+                            <StackPanel Grid.Row="1" Margin="12,0,12,8" Spacing="4">
+                                <TextBlock Opacity="0.65" TextWrapping="Wrap"
+                                           Text="{x:Bind Vm.DvcNote, Mode=OneWay}" />
+                                <!-- The client's own numbers for its channel, to compare against the row above. -->
+                                <TextBlock Opacity="0.85" TextWrapping="Wrap" FontFamily="Consolas"
+                                           Text="{x:Bind Vm.ClientMeasured, Mode=OneWay}" />
+                            </StackPanel>
                             <Grid Grid.Row="2" Padding="12,4" ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="0.32*" /><ColumnDefinition Width="0.13*" />
@@ -250,6 +256,54 @@
                                             <TextBlock Grid.Column="3" Text="{x:Bind SendRate}" FontFamily="Consolas" Opacity="0.85" />
                                             <TextBlock Grid.Column="4" Text="{x:Bind RecvRate}" FontFamily="Consolas" Opacity="0.85" />
                                             <TextBlock Grid.Column="5" Text="{x:Bind Rtt}" Opacity="0.8" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- ===================== LINK QUALITY ===================== -->
+                <Grid x:Name="LinkView" Visibility="Collapsed">
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Margin="12,10,12,2" Opacity="0.8" TextWrapping="Wrap"
+                                       Text="RDP link quality: round-trip time, bandwidth, loss and frame health for the connection itself." />
+                            <TextBlock Grid.Row="1" Margin="12,0,12,8" Opacity="0.65" TextWrapping="Wrap"
+                                       Text="{x:Bind Vm.LinkNote, Mode=OneWay}" />
+                            <Grid Grid.Row="2" Padding="12,4" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="0.55*" /><ColumnDefinition Width="0.20*" />
+                                    <ColumnDefinition Width="0.25*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Counter" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="1" Text="Value" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="2" Text="Instance" FontWeight="SemiBold" />
+                            </Grid>
+                            <ListView Grid.Row="2" Margin="0,32,0,0" ItemsSource="{x:Bind Vm.LinkQuality}" SelectionMode="None">
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="ListViewItem">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Padding" Value="12,4" /><Setter Property="MinHeight" Value="0" />
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="local:LinkRow">
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="0.55*" /><ColumnDefinition Width="0.20*" />
+                                                <ColumnDefinition Width="0.25*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="1" Text="{x:Bind Value}" FontFamily="Consolas" />
+                                            <TextBlock Grid.Column="2" Text="{x:Bind Instance}" Opacity="0.7" TextTrimming="CharacterEllipsis" />
                                         </Grid>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
