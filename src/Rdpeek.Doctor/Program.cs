@@ -4,19 +4,27 @@ using Rdpeek.Doctor;
 // Exit code: 0 = no failures, 1 = at least one FAIL finding.
 //
 //   rdpeek-doctor                          Registration check (default).
+//   rdpeek-doctor windows                  List the RDP windows the companion correlates against.
+//   rdpeek-doctor broker [--seconds N]     Host the broker pipe and print what the plugin
+//                                          reports. Run with the companion closed.
 //   rdpeek-doctor dvcprobe [--discover]    Opt-in client-side DVC traffic probe over
 //                                          mstsc's ETW providers. Needs Administrator.
 //     --seconds N                          Stop after N seconds (default: Ctrl+C).
 
-if (args.Length > 0 && args[0].Equals("dvcprobe", StringComparison.OrdinalIgnoreCase))
-{
-    int seconds = 0;
-    int at = Array.FindIndex(args, a => a.Equals("--seconds", StringComparison.OrdinalIgnoreCase));
-    if (at >= 0 && at + 1 < args.Length) int.TryParse(args[at + 1], out seconds);
+int seconds = 0;
+int secondsAt = Array.FindIndex(args, a => a.Equals("--seconds", StringComparison.OrdinalIgnoreCase));
+if (secondsAt >= 0 && secondsAt + 1 < args.Length) int.TryParse(args[secondsAt + 1], out seconds);
 
-    return ClientDvcProbe.Run(
-        discover: args.Contains("--discover", StringComparer.OrdinalIgnoreCase),
-        seconds: seconds);
+switch (args.Length > 0 ? args[0].ToLowerInvariant() : "")
+{
+    case "dvcprobe":
+        return ClientDvcProbe.Run(args.Contains("--discover", StringComparer.OrdinalIgnoreCase), seconds);
+
+    case "windows":
+        return ClientDiagnostics.ListRdpWindows();
+
+    case "broker":
+        return ClientDiagnostics.ListenToBroker(seconds);
 }
 
 NativeMethods.CoInitializeEx(IntPtr.Zero, NativeMethods.COINIT_MULTITHREADED);

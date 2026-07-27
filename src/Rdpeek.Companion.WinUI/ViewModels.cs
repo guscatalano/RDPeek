@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Security.Principal;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Dvc.Diag.Protocol;
@@ -229,7 +230,23 @@ public partial class MainViewModel : ObservableObject
         int awaiting = states.Count(s => s.Status == "listening");
         Status = connected > 0 ? $"Agent connected on {connected} session(s)."
                : awaiting > 0 ? $"⚠ No agent on {awaiting} session(s) — copy the install command into that session (one-time)."
+               // Elevated with nothing reporting is almost always the cause, not a
+               // coincidence: the plugin runs at medium integrity under mstsc and
+               // cannot write to a broker pipe owned by an elevated process.
+               : Elevated ? "Running as administrator — the plugin (medium integrity) can't reach the broker. Restart the companion NOT as admin."
                : windowCount == 0 ? "No RDP windows open. Connect with mstsc."
                : "Waiting for the RDPeek plugin to report…";
+    }
+
+    private static readonly bool Elevated = IsElevated();
+
+    private static bool IsElevated()
+    {
+        try
+        {
+            using var id = WindowsIdentity.GetCurrent();
+            return new WindowsPrincipal(id).IsInRole(WindowsBuiltInRole.Administrator);
+        }
+        catch { return false; }
     }
 }

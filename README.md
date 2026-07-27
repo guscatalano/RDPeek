@@ -39,7 +39,7 @@ Early. What exists and is verified today:
 | `Rdpeek.Agent` — SysInfo + process collectors, agent core | ✅ collectors + `serve` DVC transport verified live end-to-end |
 | `Rdpeek.Plugin` — client COM plugin (`IWTSPlugin`, LocalServer32) | ✅ **live DVC round-trip verified** — pulls the remote host's info over the channel |
 | `Rdpeek.Client` — client-side DVC configuration roster | ✅ done, verified live (`rdpeek-plugin channels`) |
-| `Rdpeek.Companion` — dashboard: agent status + live host header + remote process table | ✅ verified live — host info & processes stream from the agent over the DVC |
+| `Rdpeek.Companion.WinUI` — dashboard: agent status, host header, processes, host inventory | ✅ verified live — host info & processes stream from the agent over the DVC |
 | Per-DVC traffic counters — agent collector + "DVC traffic" tab | ✅ built; perfmon source verified on build 26100 (reports "no channels open" off-host, as expected) |
 | Full viewer/dashboard, file transport | ⬜ not yet |
 
@@ -93,6 +93,15 @@ are server-side, so on your own desktop it will correctly say no channels are op
 
 ```powershell
 dotnet run --project src/Rdpeek.Agent -- dvcwatch
+```
+
+Check the client half of the link without opening the dashboard — which RDP windows
+are detected, and what the plugin reports over the broker pipe (run with the
+companion closed, and not elevated):
+
+```powershell
+dotnet run --project src/Rdpeek.Doctor -- windows
+dotnet run --project src/Rdpeek.Doctor -- broker --seconds 10
 ```
 
 Optional, client-side, needs Administrator — sample mstsc's own ETW providers to
