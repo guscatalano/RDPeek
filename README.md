@@ -40,11 +40,24 @@ Early. What exists and is verified today:
 | `Rdpeek.Plugin` — client COM plugin (`IWTSPlugin`, LocalServer32) | ✅ **live DVC round-trip verified** — pulls the remote host's info over the channel |
 | `Rdpeek.Client` — client-side DVC configuration roster | ✅ done, verified live (`rdpeek-plugin channels`) |
 | `Rdpeek.Companion` — dashboard: agent status + live host header + remote process table | ✅ verified live — host info & processes stream from the agent over the DVC |
-| Full viewer/dashboard, per-DVC counters, file transport | ⬜ not yet |
+| Per-DVC traffic counters — agent collector + "DVC traffic" tab | ✅ built; perfmon source verified on build 26100 (reports "no channels open" off-host, as expected) |
+| Full viewer/dashboard, file transport | ⬜ not yet |
 
-The per-DVC **performance counters** RDPeek will consume are not yet released in
-Windows (expected ~2026); the agent runtime-detects them and lights up the
-dashboard when they land — nothing depends on them meanwhile.
+### Per-DVC traffic
+
+The per-DVC **performance counters** have shipped: Windows exposes a
+`Remote Desktop Virtual Channel` counter set with one instance per open channel,
+carrying bytes in both directions, RTT and bandwidth. The agent reads it — no
+elevation required. Where it's absent, the agent falls back to summing the RDP
+server's ETW write-flush events, the approach merged in from
+[RDP_DVC_Watcher](https://github.com/guscatalano/RDP_DVC_Watcher) (send
+direction only, partial, needs Administrator).
+
+Both sources are **server-side**, so they only produce numbers from inside the
+session — that is why they live in the agent. The client has no per-channel
+equivalent: mstsc's own ETW providers report transport byte counts without ever
+naming a channel. `rdpeek-doctor dvcprobe` re-checks that on any build.
+See [`DESIGN.md`](DESIGN.md) §6.4 for the evidence.
 
 ## Build & test
 
@@ -75,6 +88,20 @@ See how DVCs are configured on this client (registered plugins + built-in channe
 dotnet run --project src/Rdpeek.Plugin -- channels
 ```
 
+Watch per-channel traffic live. Run this **inside an RDP session** — the counters
+are server-side, so on your own desktop it will correctly say no channels are open:
+
+```powershell
+dotnet run --project src/Rdpeek.Agent -- dvcwatch
+```
+
+Optional, client-side, needs Administrator — sample mstsc's own ETW providers to
+see what this Windows build exposes:
+
+```powershell
+dotnet run --project src/Rdpeek.Doctor -- dvcprobe --discover --seconds 20
+```
+
 ## Layout
 
 ```
@@ -85,8 +112,16 @@ src/
   Rdpeek.Doctor/    standalone registration diagnostician
 tests/
   Protocol.Tests/   framing/router unit tests
+  Agent.Tests/      DVC traffic parsing + rate derivation
   Conformance/      full contract over an in-proc loopback (no RDP)
 ```
+
+## Credits
+
+The ETW per-channel traffic route is merged in from
+[RDP_DVC_Watcher](https://github.com/guscatalano/RDP_DVC_Watcher) (MIT), which
+first established that the RDP server fires a per-channel "write flush" trace
+event carrying the channel name and payload size.
 
 ## Safety
 

@@ -60,7 +60,17 @@ internal sealed class AgentCore
                     _ = _router.RespondAsync(new Envelope { PerfSnapshot = PerfCollector.Collect() }, env.RequestId);
                     break;
 
-                // File transfer, counters, and process actions are wired in later milestones.
+                // Periodic pushes aren't wired yet: any interval is answered one-shot,
+                // which is what the polling viewer asks for.
+                case Envelope.BodyOneofCase.CounterSubscribe:
+                    _ = _router.RespondAsync(new Envelope { CounterSample = DvcCounters.Snapshot() }, env.RequestId);
+                    break;
+
+                case Envelope.BodyOneofCase.ChannelRosterRequest:
+                    _ = _router.RespondAsync(new Envelope { ChannelRoster = DvcCounters.Roster() }, env.RequestId);
+                    break;
+
+                // File transfer and process actions are wired in later milestones.
                 default:
                     break;
             }
@@ -90,7 +100,7 @@ internal sealed class AgentCore
         ProcessKill = false, // read-only build
         FilePull = false,    // wired in M2
         FilePush = false,
-        Counters = false,    // runtime-probed once the OS counters ship
+        Counters = DvcCounters.Available,   // perfmon counter set, else the ETW fallback
         MaxChunkBytes = 256 * 1024,
     };
 }

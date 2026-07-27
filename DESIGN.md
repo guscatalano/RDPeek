@@ -221,13 +221,42 @@ Runs on `dvc::diag::files` so it never starves the dashboard on the control
 channel. Backpressure via the ack window keeps the DVC send queue from
 overrunning.
 
-### 6.4 Counter light-up (future)
+### 6.4 Per-DVC traffic counters
+
+Resolved 2026-07-26: the counter set **has shipped** and is **server-side only**.
+
 ```
-agent startup: PdhEnumObjects → per-DVC set present?
-  no  → Capabilities.counters=false   (Health panel stays on ping/echo)
-  yes → Capabilities.counters=true; on CounterSubscribe, push CounterSample
+agent: PdhEnumObjectItems("Remote Desktop Virtual Channel") → present?
+  yes → source "perfmon": one instance per open channel; both directions,
+        RTT, bandwidth, open count. No elevation needed.
+  no  → source "etw": Microsoft.Windows.RemoteDesktop.ServerBase write-flush
+        events, summed per channel. Send direction only, partial, needs admin.
+Either way Capabilities.counters=true and CounterSubscribe{interval_ms=0}
+answers with a CounterSample tagged with its source.
 ```
-No code change ships when the OS build lands — the flag flips at runtime.
+
+Both sources measure the **session host**, so the agent owns them and the
+viewer only ever relays. Direction is always stated from the server's point of
+view: *sent* = host → client.
+
+Why there is no client-side equivalent, established by inspecting the shipping
+binaries rather than assumed:
+
+| Source | Lives in | Client? |
+|---|---|---|
+| `Remote Desktop Virtual Channel` counter set | `rdpcorets.dll` (perflib provider `{57683f06-…}`) | no — never instanced on a machine that only runs mstsc |
+| `Microsoft.Windows.RemoteDesktop.ServerBase` (`8375996d-…`) | `rdpserverbase.dll` only | no — this is precisely why RDP_DVC_Watcher "does not work from the client" |
+| `Microsoft.Windows.RemoteDesktop.ClientCore` (`080656c2-…`), `…Base` (`5795aab9-…`) | `mstscax.dll`, `rdpbase.dll` | yes, but the payloads carry transport byte counts (`UdpData`, `BytesRead`), never a channel name |
+
+`rdpeek-doctor dvcprobe [--discover]` is the opt-in client-side probe over those
+client providers: it needs admin, defaults to off, and reports what the local
+build actually emits instead of assuming. Rows it cannot attribute to a channel
+are labelled `(transport)`.
+
+The ETW fallback is a port of
+[RDP_DVC_Watcher](https://github.com/guscatalano/RDP_DVC_Watcher); its event
+scraping lives in `DvcTrafficParser` so it stays unit-testable without a trace
+session.
 
 ---
 

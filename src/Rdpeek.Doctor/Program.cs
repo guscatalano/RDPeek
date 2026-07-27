@@ -2,6 +2,22 @@ using Rdpeek.Doctor;
 
 // Standalone DVC plugin registration diagnostician. No RDP session required.
 // Exit code: 0 = no failures, 1 = at least one FAIL finding.
+//
+//   rdpeek-doctor                          Registration check (default).
+//   rdpeek-doctor dvcprobe [--discover]    Opt-in client-side DVC traffic probe over
+//                                          mstsc's ETW providers. Needs Administrator.
+//     --seconds N                          Stop after N seconds (default: Ctrl+C).
+
+if (args.Length > 0 && args[0].Equals("dvcprobe", StringComparison.OrdinalIgnoreCase))
+{
+    int seconds = 0;
+    int at = Array.FindIndex(args, a => a.Equals("--seconds", StringComparison.OrdinalIgnoreCase));
+    if (at >= 0 && at + 1 < args.Length) int.TryParse(args[at + 1], out seconds);
+
+    return ClientDvcProbe.Run(
+        discover: args.Contains("--discover", StringComparer.OrdinalIgnoreCase),
+        seconds: seconds);
+}
 
 NativeMethods.CoInitializeEx(IntPtr.Zero, NativeMethods.COINIT_MULTITHREADED);
 try

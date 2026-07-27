@@ -15,4 +15,9 @@
     <ProjectReference Include="..\Rdpeek.Protocol\Rdpeek.Protocol.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- ETW fallback source for per-DVC traffic (see DvcTrafficWatcher). -->
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.19" />
+  </ItemGroup>
+
 </Project>

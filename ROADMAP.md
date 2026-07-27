@@ -117,17 +117,22 @@ independent; sequence by demand.
 
 ## Open decisions to resolve early
 
-1. **Counter set — not released yet (~Aug 2026); do not block on it.**
-   Probed this client during an active RDP session on 2026-07-19: no per-DVC
-   counter set registered, and `RemoteFX Network`/`Graphics` had zero live
-   instances. That reflects the **feature not having shipped**, *not* where it
-   will live — draw no conclusion about client-vs-host from a pre-release box.
-   Plan: v1 ships channel health via the **ping/echo probe + ETW**; the counter
-   dashboard is **runtime-detected** (`Capabilities.counters`) and lit up when the
-   build lands. **Re-probe after release** to answer: client-side, host-side, or
-   both? per-channel instanced? named by channel? — those decide the collector's
-   final home (viewer-local vs. relayed via `CounterSample`; the proto supports
-   either).
+1. ~~**Counter set — not released yet (~Aug 2026); do not block on it.**~~
+   **Resolved 2026-07-26.** The set exists (`Remote Desktop Virtual Channel`,
+   build 26100): per-channel instances, both directions, plus RTT, bandwidth and
+   open count — and it needs no elevation. The 2026-07-19 probe found nothing
+   because it ran on **the client**: the perflib provider is `rdpcorets.dll`, so
+   instances only appear on the session host.
+   Collector's home is therefore the **agent**, relayed via `CounterSample`
+   (tagged `source: "perfmon"`). Where the set is missing, the agent falls back
+   to summing `Microsoft.Windows.RemoteDesktop.ServerBase` ETW write-flush events
+   (`source: "etw"`, send direction only, needs admin) — the RDP_DVC_Watcher
+   approach, merged in.
+   **Client-side is a dead end for per-channel bytes**, also settled by
+   inspection: that ETW provider ships only in `rdpserverbase.dll`, and the
+   client providers in `mstscax.dll`/`rdpbase.dll` report transport byte counts
+   without a channel name. `rdpeek-doctor dvcprobe` exists to re-check that on
+   any build.
 2. **Base language** — C++ vs. .NET 8 advanced sample for the agent.
 3. **Fault-injection proxy** — v1 scope or explicit follow-on? (It's the heaviest
    single component.)

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Dvc.Diag.Protocol;
 using Microsoft.UI.Dispatching;
 using Rdpeek.Client;
 using Windows.ApplicationModel.DataTransfer;
@@ -27,6 +28,9 @@ public sealed record SessionRow(uint Id, string Station, string User, string Sta
 
 public sealed record ServiceRow(string Name, string Status, string StartType, string Display);
 
+/// <summary>Live traffic on one remote DVC, as measured on the session host.</summary>
+public sealed record DvcRow(string Name, string Sent, string Received, string SendRate, string RecvRate, string Rtt);
+
 public partial class MainViewModel : ObservableObject
 {
     private const string InstallCommand =
@@ -42,10 +46,12 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<NetRow> Network { get; } = new();
     public ObservableCollection<SessionRow> Sessions { get; } = new();
     public ObservableCollection<ServiceRow> Services { get; } = new();
+    public ObservableCollection<DvcRow> DvcTraffic { get; } = new();
 
     [ObservableProperty] private ConnectionRow? _selectedConnection;
     [ObservableProperty] private string _hostHeader = "Connect an RDP session to see host details.";
     [ObservableProperty] private string _perfText = "";
+    [ObservableProperty] private string _dvcNote = "Waiting for the agent to report channel traffic…";
     [ObservableProperty] private string _status = "Starting…";
 
     public MainViewModel(DispatcherQueue dispatcher)
@@ -161,7 +167,48 @@ public partial class MainViewModel : ObservableObject
         PerfText = st?.Perf is { } perf
             ? string.Join("      ", perf.Counters.Select(c => $"{c.Name}: {c.Value}{(string.IsNullOrEmpty(c.Unit) ? "" : " " + c.Unit)}"))
             : "";
+
+        UpdateDvcTraffic(st?.Counters);
     }
+
+    /// <summary>
+    /// Per-channel traffic measured by the agent on the session host. Direction is from
+    /// the server's point of view: "sent" is host → client.
+    /// </summary>
+    private void UpdateDvcTraffic(CounterSample? sample)
+    {
+        DvcTraffic.Clear();
+        if (sample is null)
+        {
+            DvcNote = "Waiting for the agent to report channel traffic…";
+            return;
+        }
+
+        foreach (var c in sample.Channels.OrderByDescending(c => c.BytesSent + c.BytesReceived))
+            DvcTraffic.Add(new DvcRow(
+                c.Name,
+                Bytes(c.BytesSent),
+                Bytes(c.BytesReceived),
+                Rate(c.SendRateBps),
+                Rate(c.RecvRateBps),
+                c.RttMs > 0 ? $"{c.RttMs:0.#} ms" : "—"));
+
+        string source = sample.Source switch
+        {
+            "perfmon" => "Source: “Remote Desktop Virtual Channel” counters on the session host.",
+            "etw" => "Source: RDP server ETW write-flush events — send direction only, and partial.",
+            _ => "",
+        };
+        DvcNote = string.Join("  ", new[] { sample.Note, source }.Where(s => !string.IsNullOrEmpty(s)));
+    }
+
+    private static string Bytes(ulong n) =>
+        n >= 1024UL * 1024 * 1024 ? $"{n / 1024.0 / 1024 / 1024:0.00} GB" :
+        n >= 1024UL * 1024 ? $"{n / 1024.0 / 1024:0.00} MB" :
+        n >= 1024UL ? $"{n / 1024.0:0.0} KB" : $"{n} B";
+
+    private static string Rate(double bytesPerSecond) =>
+        double.IsFinite(bytesPerSecond) && bytesPerSecond >= 1 ? $"{Bytes((ulong)bytesPerSecond)}/s" : "—";
 
     private void UpdateChannels()
     {

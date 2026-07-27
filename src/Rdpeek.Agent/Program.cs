@@ -8,6 +8,7 @@ using Rdpeek.Agent;
 //
 //   rdpeek-agent selftest   Run the collectors locally and print the snapshot (no DVC).
 //   rdpeek-agent serve      Open the DVC channel and serve (requires a live RDP session).
+//   rdpeek-agent dvcwatch   Live per-channel traffic table in the console (no DVC).
 //
 // selftest exists so the real collectors can be verified anywhere, and so the viewer
 // can be developed without a deployed agent.
@@ -26,10 +27,74 @@ switch (command)
         // session with the RDPeek client plugin listening on the same channel.
         return ServeLoop.Run();
 
+    case "dvcwatch":
+        // Standalone per-DVC traffic monitor — the RDP_DVC_Watcher tool this grew from,
+        // now reading whichever source is available. Run it on the session host.
+        return RunDvcWatch(args.Contains("--etw"));
+
     default:
-        Console.Error.WriteLine($"Unknown command '{command}'. Use: selftest | serve");
+        Console.Error.WriteLine($"Unknown command '{command}'. Use: selftest | serve | dvcwatch");
         return 64;
 }
+
+// Live table of per-channel traffic, refreshed in place until Ctrl+C.
+static int RunDvcWatch(bool forceEtw)
+{
+    Console.WriteLine(forceEtw
+        ? "rdpeek-agent: per-DVC traffic via ETW (Ctrl+C to stop)"
+        : $"rdpeek-agent: per-DVC traffic via {DvcCounters.SourceName} (Ctrl+C to stop)");
+    Console.WriteLine("Counters are server-side: run this inside the RDP session host.");
+    Console.WriteLine();
+
+    using var stop = new ManualResetEventSlim(false);
+    Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Set(); };
+
+    // Redraw in place when we own a console; when output is redirected there is no
+    // cursor to move, so the table just scrolls.
+    int top = 0;
+    bool redraw = true;
+    try { top = Console.CursorTop; } catch (IOException) { redraw = false; }
+
+    while (!stop.IsSet)
+    {
+        var sample = forceEtw ? DvcTrafficWatcher.Instance.Snapshot() : DvcCounters.Snapshot();
+
+        var lines = new List<string> { $"{DateTime.Now:HH:mm:ss}   source: {sample.Source}" };
+        if (sample.Channels.Count == 0)
+        {
+            lines.Add(string.IsNullOrEmpty(sample.Note) ? "(no channels)" : sample.Note);
+        }
+        else
+        {
+            lines.Add($"  {"CHANNEL",-34} {"SENT",12} {"RECV",12} {"SEND/s",13} {"RECV/s",13} {"RTT",8}");
+            foreach (var c in sample.Channels)
+                lines.Add($"  {Trim(c.Name, 34),-34} {Bytes(c.BytesSent),12} {Bytes(c.BytesReceived),12} " +
+                          $"{Rate(c.SendRateBps),13} {Rate(c.RecvRateBps),13} " +
+                          $"{(c.RttMs > 0 ? $"{c.RttMs:0.#} ms" : "-"),8}");
+        }
+
+        if (redraw)
+        {
+            try { Console.SetCursorPosition(0, top); } catch (IOException) { redraw = false; }
+        }
+        foreach (var line in lines) Console.WriteLine(line.PadRight(100));
+
+        stop.Wait(1000);
+    }
+
+    DvcCounters.Stop();
+    return 0;
+}
+
+static string Trim(string s, int max) => s.Length <= max ? s : s[..(max - 1)] + "…";
+
+static string Bytes(ulong n) =>
+    n >= 1024UL * 1024 * 1024 ? $"{n / 1024.0 / 1024 / 1024:0.00} GB" :
+    n >= 1024UL * 1024 ? $"{n / 1024.0 / 1024:0.00} MB" :
+    n >= 1024UL ? $"{n / 1024.0:0.0} KB" : $"{n} B";
+
+static string Rate(double bytesPerSecond) =>
+    double.IsFinite(bytesPerSecond) && bytesPerSecond > 0 ? Bytes((ulong)bytesPerSecond) + "/s" : "-";
 
 static void RunSelfTest()
 {
@@ -70,4 +135,13 @@ static void RunSelfTest()
     Console.WriteLine("== Perf ==");
     foreach (var c in PerfCollector.Collect().Counters)
         Console.WriteLine($"  {c.Name,-20} {c.Value} {c.Unit}");
+
+    Console.WriteLine();
+    Console.WriteLine($"== DVC traffic (source: {DvcCounters.SourceName}) ==");
+    var dvc = DvcCounters.Snapshot();
+    if (dvc.Channels.Count == 0)
+        Console.WriteLine($"  {dvc.Note}");
+    foreach (var c in dvc.Channels)
+        Console.WriteLine($"  {Trim(c.Name, 34),-34} sent {Bytes(c.BytesSent),10}  recv {Bytes(c.BytesReceived),10}  " +
+                          $"{Rate(c.SendRateBps)} up / {Rate(c.RecvRateBps)} down");
 }

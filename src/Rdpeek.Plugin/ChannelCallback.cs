@@ -83,6 +83,10 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
                 var perf = await RequestAsync(new Envelope { PerfRequest = new PerfRequest() });
                 if (perf?.BodyCase == Envelope.BodyOneofCase.PerfSnapshot) Push("perf", perf.PerfSnapshot);
 
+                // interval_ms = 0: one-shot snapshot, not a subscription (see diag.proto).
+                var dvc = await RequestAsync(new Envelope { CounterSubscribe = new CounterSubscribe { IntervalMs = 0 } });
+                if (dvc?.BodyCase == Envelope.BodyOneofCase.CounterSample) Push("counters", dvc.CounterSample);
+
                 // Every 3rd cycle (~9s): sessions + services (change slowly, bigger payloads).
                 if (cycle % 3 == 0)
                 {
