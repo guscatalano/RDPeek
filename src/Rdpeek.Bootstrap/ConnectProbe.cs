@@ -3,11 +3,13 @@ using System.Windows.Forms;
 namespace Rdpeek.Bootstrap;
 
 /// <summary>
-/// Connects the hosted RDP control to a host and holds the session open, so a registered
-/// RDPeek client plugin loads and its DVC (dvc::diag::inspector) connects. Used to drive a
-/// real connection against the mock RDP server (which opens that channel server-side): this
-/// probe just establishes and holds the link; success is confirmed out-of-band by the
-/// plugin log.
+/// Connects the hosted RDP control to a host and holds the session open. With no
+/// <see cref="_agentFolder"/>/<see cref="_script"/> it is a plain connectivity probe; with
+/// them it applies the installer's real provisioning config (drive redirection + the
+/// <c>StartProgram</c> that runs install-agent-task.ps1 over <c>\\tsclient</c>), so a server
+/// can observe exactly what the installer transmits — the requested <c>rdpdr</c> channel and
+/// the Client Info AlternateShell. NLA is disabled and the certificate is not checked,
+/// matching a TLS-only test server.
 /// </summary>
 internal sealed class ConnectProbe : Form
 {
@@ -16,18 +18,22 @@ internal sealed class ConnectProbe : Form
     private readonly string _host;
     private readonly int _port;
     private readonly int _holdSeconds;
+    private readonly string? _agentFolder;
+    private readonly string? _script;
     private bool _reachedConnected;
     private DateTime _deadlineUtc;
 
     /// <summary>0 = reached "connected", 2 = timed out before connecting, 3 = error.</summary>
     public int ExitCode { get; private set; } = 2;
 
-    public ConnectProbe(string target, int holdSeconds)
+    public ConnectProbe(string target, int holdSeconds, string? agentFolder = null, string? script = null)
     {
         var parts = target.Split(':', 2);
         _host = parts[0];
         _port = parts.Length > 1 && int.TryParse(parts[1], out var p) ? p : 3389;
         _holdSeconds = holdSeconds;
+        _agentFolder = agentFolder;
+        _script = script;
 
         Text = $"RDPeek connect probe — {target}";
         Width = 1024;
@@ -55,11 +61,12 @@ internal sealed class ConnectProbe : Form
             // Offer the negotiation-based security layer so the SSL bit is present in the
             // X.224 request; a TLS-only server (like the mock) then selects SSL. NOTE:
             // AuthenticationLevel 0 would SKIP TLS and request only standard RDP — use >= 1.
-            // Level 2 connects and warns on a self-signed cert (the caller dismisses it).
             TrySet(() => adv.NegotiateSecurityLayer = true);
             TrySet(() => adv.AuthenticationLevel = 2);
             TrySet(() => adv.EnableAutoReconnect = false);
             TrySet(() => adv.GrabFocusOnConnect = false);
+
+            ApplyProvisioning(rdp);
 
             Console.WriteLine($"connecting to {_host}:{_port} …");
             rdp.Connect();
@@ -72,6 +79,25 @@ internal sealed class ConnectProbe : Form
             ExitCode = 3;
             Close();
         }
+    }
+
+    /// <summary>When an agent folder + script are supplied, drive the same redirection and
+    /// StartProgram the installer sends, so the server sees the real provisioning request.</summary>
+    private void ApplyProvisioning(dynamic rdp)
+    {
+        if (string.IsNullOrEmpty(_agentFolder) || string.IsNullOrEmpty(_script)) return;
+
+        var agentExe = Path.Combine(_agentFolder!, "rdpeek-agent.exe");
+        var startProgram = BootstrapForm.BuildStartProgram(
+            BootstrapForm.ToTsClientPath(_script!), BootstrapForm.ToTsClientPath(agentExe));
+
+        dynamic adv = rdp.AdvancedSettings2;
+        TrySet(() => adv.RedirectDrives = true);              // requests the rdpdr channel
+        dynamic sec = rdp.SecuredSettings2;
+        TrySet(() => sec.StartProgram = startProgram);        // -> Client Info AlternateShell
+        TrySet(() => sec.WorkDir = BootstrapForm.ToTsClientPath(_agentFolder!));
+        Console.WriteLine("provisioning: RedirectDrives=true");
+        Console.WriteLine($"provisioning StartProgram: {startProgram}");
     }
 
     private void OnPoll(object? sender, EventArgs e)

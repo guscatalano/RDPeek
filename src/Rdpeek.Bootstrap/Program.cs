@@ -25,7 +25,11 @@ internal static class Program
         if (target is not null)
         {
             int hold = int.TryParse(GetOption(args, "--hold"), out var h) ? h : 8;
-            using var probe = new ConnectProbe(target, hold);
+            // Optional: also send the installer's real drive-redirect + StartProgram, so a
+            // server can verify what the installer transmits.
+            var agentFolder = GetOption(args, "--agent-folder");
+            var script = GetOption(args, "--script");
+            using var probe = new ConnectProbe(target, hold, agentFolder, script);
             Application.Run(probe);
             return probe.ExitCode;
         }

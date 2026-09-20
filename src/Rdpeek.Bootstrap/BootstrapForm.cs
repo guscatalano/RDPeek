@@ -151,9 +151,7 @@ internal sealed class BootstrapForm : Form
         // drive, then exit (which logs the session off). -WaitSeconds rides out the
         // brief window where \\tsclient may not be mounted yet at logon; -NoStart
         // skips starting a serve that would die with this throwaway session anyway.
-        var startProgram =
-            $"powershell.exe -NoProfile -ExecutionPolicy Bypass " +
-            $"-File \"{uncScript}\" -AgentPath \"{uncAgent}\" -WaitSeconds 45 -NoStart";
+        var startProgram = BuildStartProgram(uncScript, uncAgent);
 
         try
         {
@@ -256,6 +254,12 @@ internal sealed class BootstrapForm : Form
         var rest = full[root.Length..].TrimStart('\\');
         return $@"\\tsclient\{drive}\{rest}";
     }
+
+    /// <summary>The session "start program": run the installer over the redirected drive, then
+    /// exit (logging the session off). Shared by the installer form and the headless probe.</summary>
+    internal static string BuildStartProgram(string uncScript, string uncAgent) =>
+        "powershell.exe -NoProfile -ExecutionPolicy Bypass " +
+        $"-File \"{uncScript}\" -AgentPath \"{uncAgent}\" -WaitSeconds 45 -NoStart";
 
     private (string agentFolder, string script) GuessDefaults()
     {
