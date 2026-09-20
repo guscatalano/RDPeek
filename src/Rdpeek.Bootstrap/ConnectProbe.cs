@@ -4,11 +4,10 @@ namespace Rdpeek.Bootstrap;
 
 /// <summary>
 /// Connects the hosted RDP control to a host and holds the session open, so a registered
-/// RDPeek client plugin loads and its DVC (dvc::diag::inspector) connects. Used to drive
-/// a real connection against the mock RDP server (which opens that channel server-side):
-/// success is confirmed out-of-band by the plugin log, this probe just establishes and
-/// holds the link. NLA is disabled and the certificate is not checked, matching the mock's
-/// TLS-only, no-auth posture.
+/// RDPeek client plugin loads and its DVC (dvc::diag::inspector) connects. Used to drive a
+/// real connection against the mock RDP server (which opens that channel server-side): this
+/// probe just establishes and holds the link; success is confirmed out-of-band by the
+/// plugin log.
 /// </summary>
 internal sealed class ConnectProbe : Form
 {
@@ -46,11 +45,21 @@ internal sealed class ConnectProbe : Form
         {
             dynamic rdp = _rdp.Control;
             rdp.Server = _host;
+            TrySet(() => rdp.UserName = "rdpeek");   // the mock ignores creds, but the control wants a user
+            TrySet(() => rdp.DesktopWidth = 1024);
+            TrySet(() => rdp.DesktopHeight = 720);
 
             dynamic adv = rdp.AdvancedSettings2;
             adv.RDPPort = _port;
-            TrySet(() => adv.EnableCredSspSupport = false); // mock is TLS-only, no NLA
-            TrySet(() => adv.AuthenticationLevel = 0);      // don't fail on the self-signed cert
+            TrySet(() => adv.ClearTextPassword = "rdpeek");
+            // Offer the negotiation-based security layer so the SSL bit is present in the
+            // X.224 request; a TLS-only server (like the mock) then selects SSL. NOTE:
+            // AuthenticationLevel 0 would SKIP TLS and request only standard RDP — use >= 1.
+            // Level 2 connects and warns on a self-signed cert (the caller dismisses it).
+            TrySet(() => adv.NegotiateSecurityLayer = true);
+            TrySet(() => adv.AuthenticationLevel = 2);
+            TrySet(() => adv.EnableAutoReconnect = false);
+            TrySet(() => adv.GrabFocusOnConnect = false);
 
             Console.WriteLine($"connecting to {_host}:{_port} …");
             rdp.Connect();
