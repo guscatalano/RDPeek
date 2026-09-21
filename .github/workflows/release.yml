@@ -32,6 +32,15 @@ jobs:
           dotnet publish src/Rdpeek.Agent  -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/agent
           dotnet publish src/Rdpeek.Doctor -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/doctor
 
+      # The installer + its native shim (rdpeek-vc-shim.dll, built by the Bootstrap's MSBuild target).
+      # The shim must stay a loose DLL next to the exe, so the two ship together as a zip.
+      - name: Publish installer + shim
+        run: dotnet publish src/Rdpeek.Bootstrap -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/bootstrap
+
+      - name: Bundle installer (exe + shim) as a zip
+        shell: pwsh
+        run: Compress-Archive -Path publish/bootstrap/rdpeek-bootstrap.exe, publish/bootstrap/rdpeek-vc-shim.dll -DestinationPath publish/rdpeek-bootstrap-win-x64.zip -Force
+
       - name: Create / update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -41,4 +50,5 @@ jobs:
           gh release create $tag `
             publish/agent/rdpeek-agent.exe `
             publish/doctor/rdpeek-doctor.exe `
+            publish/rdpeek-bootstrap-win-x64.zip `
             --title $tag --generate-notes
