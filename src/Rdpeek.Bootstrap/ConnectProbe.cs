@@ -60,7 +60,9 @@ internal sealed class ConnectProbe : Form
             TrySet(() => adv.ClearTextPassword = "rdpeek");
             // Offer the negotiation-based security layer so the SSL bit is present in the
             // X.224 request; a TLS-only server (like the mock) then selects SSL. NOTE:
-            // AuthenticationLevel 0 would SKIP TLS and request only standard RDP — use >= 1.
+            // AuthenticationLevel 0 does NOT just skip the cert check — it drops to Standard RDP
+            // security and requests "Rdp" (no TLS bit), which a TLS-only server rejects
+            // (SSL_REQUIRED_BY_SERVER). Verified 2026-09-20. Keep >= 1; trust/pin the cert instead.
             TrySet(() => adv.NegotiateSecurityLayer = true);
             TrySet(() => adv.AuthenticationLevel = 2);
             TrySet(() => adv.EnableAutoReconnect = false);
