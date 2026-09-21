@@ -20,13 +20,20 @@ internal sealed class ConnectProbe : Form
     private readonly int _holdSeconds;
     private readonly string? _agentFolder;
     private readonly string? _script;
+    private readonly string? _pluginDll;
+    private readonly int _detectSeconds;
+    private readonly bool _forceFallback;
+    private readonly string? _fallbackCommand;
+    private AgentWatch? _watch;
     private bool _reachedConnected;
+    private bool _agentDetected;
     private DateTime _deadlineUtc;
 
     /// <summary>0 = reached "connected", 2 = timed out before connecting, 3 = error.</summary>
     public int ExitCode { get; private set; } = 2;
 
-    public ConnectProbe(string target, int holdSeconds, string? agentFolder = null, string? script = null)
+    public ConnectProbe(string target, int holdSeconds, string? agentFolder = null, string? script = null,
+        string? pluginDll = null, int detectSeconds = 0, bool forceFallback = false, string? fallbackCommand = null)
     {
         var parts = target.Split(':', 2);
         _host = parts[0];
@@ -34,6 +41,11 @@ internal sealed class ConnectProbe : Form
         _holdSeconds = holdSeconds;
         _agentFolder = agentFolder;
         _script = script;
+        _pluginDll = pluginDll;
+        // How long to wait for the agent before the fallback; default to most of the hold window.
+        _detectSeconds = detectSeconds > 0 ? detectSeconds : Math.Max(1, holdSeconds - 4);
+        _forceFallback = forceFallback;
+        _fallbackCommand = fallbackCommand;
 
         Text = $"RDPeek connect probe — {target}";
         Width = 1024;
@@ -67,8 +79,16 @@ internal sealed class ConnectProbe : Form
             TrySet(() => adv.AuthenticationLevel = 2);
             TrySet(() => adv.EnableAutoReconnect = false);
             TrySet(() => adv.GrabFocusOnConnect = false);
+            // KeyboardHookMode 1 = send Windows-key combinations to the remote computer, so the
+            // Win+R fallback actually reaches the session (default 2 = fullscreen only).
+            TrySet(() => rdp.SecuredSettings2.KeyboardHookMode = 1);
 
+            ApplyPluginDll(adv);
             ApplyProvisioning(rdp);
+
+            // Start watching for the agent's DVC check-in before connecting, so the broker pipe is
+            // already listening and the log baseline is taken now (stale lines won't count).
+            _watch = new AgentWatch();
 
             Console.WriteLine($"connecting to {_host}:{_port} …");
             rdp.Connect();
@@ -81,6 +101,24 @@ internal sealed class ConnectProbe : Form
             ExitCode = 3;
             Close();
         }
+    }
+
+    /// <summary>Loads a DVC plugin DLL (one exporting VirtualChannelGetInstance) into the hosted
+    /// control via its <c>PluginDlls</c> setting — the only plugin-load path this control honours,
+    /// since it ignores the client COM AddIns that mstsc.exe activates. Point it at
+    /// rdpeek-vc-shim.dll to load the RDPeek plugin headlessly.</summary>
+    private void ApplyPluginDll(dynamic adv)
+    {
+        if (string.IsNullOrEmpty(_pluginDll)) return;
+        var full = Path.GetFullPath(_pluginDll!);
+        if (!File.Exists(full))
+        {
+            Console.Error.WriteLine($"--plugin-dll not found: {full}");
+            return;
+        }
+        // PluginDlls is a semicolon-separated list of DVC plugin DLL paths, applied before Connect().
+        TrySet(() => adv.PluginDlls = full);
+        Console.WriteLine($"PluginDlls: {full}");
     }
 
     /// <summary>When an agent folder + script are supplied, drive the same redirection and
@@ -114,6 +152,7 @@ internal sealed class ConnectProbe : Form
             ExitCode = 0;
             Console.WriteLine("connected — holding the session so the plugin's DVC can connect.");
             _deadlineUtc = DateTime.UtcNow.AddSeconds(_holdSeconds);
+            _ = DetectAgentAsync();
         }
         else if (state == 0 && _reachedConnected)
         {
@@ -123,10 +162,87 @@ internal sealed class ConnectProbe : Form
 
         if (DateTime.UtcNow >= _deadlineUtc)
         {
-            Console.WriteLine(_reachedConnected ? "hold elapsed." : "connect timed out.");
+            if (_reachedConnected)
+                Console.WriteLine(_agentDetected ? "hold elapsed (agent detected)." : "hold elapsed (no agent).");
+            else
+                Console.WriteLine("connect timed out.");
             if (!_reachedConnected) ExitCode = 2;
             Close();
         }
+    }
+
+    /// <summary>The provisioning strategy: AlternateShell (already sent) is primary; watch for the
+    /// agent's check-in (broker report OR plugin log — whichever wins). If it doesn't arrive in time,
+    /// fall back to injecting Win+R + the command into the session, then watch once more.</summary>
+    private async Task DetectAgentAsync()
+    {
+        if (_watch is null) return;
+
+        if (!_forceFallback)
+        {
+            var signal = await _watch.WaitAsync(TimeSpan.FromSeconds(_detectSeconds));
+            if (signal is not null) { _agentDetected = true; Console.WriteLine($"agent detected — {signal}"); return; }
+            Console.WriteLine($"no agent after {_detectSeconds}s — AlternateShell may have been ignored; trying Win+R fallback.");
+        }
+        else
+        {
+            Console.WriteLine("--force-fallback: skipping detection, going straight to Win+R.");
+        }
+
+        var command = FallbackCommand();
+        if (command is null)
+        {
+            Console.WriteLine("fallback unavailable: no --script/--agent-folder or --fallback-command to run.");
+            return;
+        }
+
+        // The fallback (settle + type + a second detection window) runs past the original hold, so
+        // push the auto-close out to cover it.
+        _deadlineUtc = DateTime.UtcNow.AddSeconds(Math.Max(4, _detectSeconds) + 10);
+        await RunFallbackAsync(command);
+
+        // Give the (now hopefully started) agent a second window to check in.
+        var after = await _watch.WaitAsync(TimeSpan.FromSeconds(Math.Max(4, _detectSeconds)));
+        if (after is not null) { _agentDetected = true; Console.WriteLine($"agent detected after fallback — {after}"); }
+        else Console.WriteLine("agent still not detected after the fallback.");
+    }
+
+    /// <summary>The command the fallback types into Run: an explicit override, else the same
+    /// StartProgram the installer sends via AlternateShell.</summary>
+    private string? FallbackCommand()
+    {
+        if (!string.IsNullOrEmpty(_fallbackCommand)) return _fallbackCommand;
+        if (string.IsNullOrEmpty(_agentFolder) || string.IsNullOrEmpty(_script)) return null;
+        var agentExe = Path.Combine(_agentFolder!, "rdpeek-agent.exe");
+        return BootstrapForm.BuildStartProgram(
+            BootstrapForm.ToTsClientPath(_script!), BootstrapForm.ToTsClientPath(agentExe));
+    }
+
+    /// <summary>Resolve the RDP control's input child window (UI thread), then inject the keystrokes
+    /// off-thread by posting them to that window — so they reach the session without depending on
+    /// foreground focus, and never leak to the local desktop. SessionKeys sleeps between keys, which
+    /// must not block the control's message pump, hence the background thread.</summary>
+    private async Task RunFallbackAsync(string command)
+    {
+        Console.WriteLine($"fallback: Win+R → {command}");
+
+        var target = (IntPtr)Invoke(() =>
+        {
+            var root = _rdp.Handle;
+            foreach (var (h, cls, depth) in SessionKeys.Descendants(root))
+                Console.WriteLine($"  window {new string(' ', depth)}[{cls}] 0x{h:X}");
+            return SessionKeys.FindInputWindow(root);
+        });
+        Console.WriteLine($"  target input window: 0x{target:X}");
+
+        await Task.Delay(1200);                       // let the session desktop settle
+        await Task.Run(() => SessionKeys.RunViaWinR(target, command));
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        base.OnFormClosed(e);
+        _watch?.Dispose();
     }
 
     private static void TrySet(Action set)

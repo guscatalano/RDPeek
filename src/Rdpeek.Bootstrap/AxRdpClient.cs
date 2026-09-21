@@ -11,10 +11,15 @@ namespace Rdpeek.Bootstrap;
 /// <see cref="BootstrapForm"/>) rather than strongly-typed MSTSCLib interfaces.
 ///
 /// It resolves the <b>NotSafeForScripting</b> coclass on purpose: the scripting-safe
-/// <c>MsTscAx.MsTscAx</c> control restricts full-trust features — including loading
-/// third-party DVC plugins (AddIns) — so a registered RDPeek client plugin never loads
-/// into it. The NotSafeForScripting control is what mstsc-class hosts use (cf.
-/// NexusRDM.RdpAx), and it loads AddIns like mstsc.exe does.
+/// <c>MsTscAx.MsTscAx</c> control restricts full-trust features (redirection, PluginDlls),
+/// so it is the wrong host for provisioning. The NotSafeForScripting control is what
+/// mstsc-class hosts use (cf. NexusRDM.RdpAx).
+///
+/// IMPORTANT (verified 2026-09-20): even this control does NOT load the client DVC COM
+/// AddIns that mstsc.exe activates from the Terminal Server Client "AddIns" registry — so a
+/// registered RDPeek COM plugin never loads into it on its own. To load a plugin headlessly,
+/// set the control's <c>PluginDlls</c> to a DVC plugin DLL exporting VirtualChannelGetInstance
+/// (rdpeek-vc-shim.dll bridges that export to the registered RDPeek COM plugin).
 ///
 /// Connection state is polled via the control's <c>Connected</c> property rather than
 /// sunk through <c>IMsTscAxEvents</c>.

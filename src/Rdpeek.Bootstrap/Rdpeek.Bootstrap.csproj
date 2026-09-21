@@ -20,4 +20,10 @@
     the machine's registry at runtime.
   -->
 
+  <ItemGroup>
+    <!-- Reuse BrokerServer so the installer can observe the plugin's "agent connected"
+         report (one of the two provisioning-success signals) instead of only tailing the log. -->
+    <ProjectReference Include="..\Rdpeek.Client\Rdpeek.Client.csproj" />
+  </ItemGroup>
+
 </Project>

@@ -8,9 +8,21 @@ namespace Rdpeek.Bootstrap;
 // the session logs off. An alternative to tools/install-agent-web.ps1.
 //
 //   rdpeek-bootstrap                         launch the installer GUI
-//   rdpeek-bootstrap --connect host[:port]   connect (NLA off) and hold, so a registered
-//                    [--hold <seconds>]      RDPeek plugin loads its DVC — used to drive
-//                                            the connection against the mock RDP server.
+//   rdpeek-bootstrap --connect host[:port]      connect (NLA off) and hold, so a registered
+//                    [--hold <seconds>]          RDPeek plugin loads its DVC — used to drive
+//                    [--plugin-dll <path>]       the connection against the mock RDP server.
+//                    [--detect-timeout <secs>]
+//                    [--force-fallback]
+//                    [--fallback-command <cmd>]
+//
+// The hosted control does NOT load the client COM AddIns that mstsc.exe does; --plugin-dll
+// points it at a DVC plugin DLL exporting VirtualChannelGetInstance (e.g. rdpeek-vc-shim.dll,
+// which CoCreateInstance's the registered RDPeek COM plugin) so the plugin loads headlessly.
+//
+// Provisioning strategy: AlternateShell (from --agent-folder/--script) is primary; the agent's
+// check-in is detected (broker report OR plugin log). If it doesn't arrive within --detect-timeout,
+// the probe falls back to injecting Win+R + the command into the session. --force-fallback skips
+// detection (to exercise the injection); --fallback-command overrides what gets typed.
 //
 // Exit codes for --connect: 0 = reached "connected", 2 = timed out, 3 = error.
 
@@ -29,7 +41,12 @@ internal static class Program
             // server can verify what the installer transmits.
             var agentFolder = GetOption(args, "--agent-folder");
             var script = GetOption(args, "--script");
-            using var probe = new ConnectProbe(target, hold, agentFolder, script);
+            var pluginDll = GetOption(args, "--plugin-dll");
+            int detect = int.TryParse(GetOption(args, "--detect-timeout"), out var d) ? d : 0;
+            bool forceFallback = Array.IndexOf(args, "--force-fallback") >= 0;
+            var fallbackCommand = GetOption(args, "--fallback-command");
+            using var probe = new ConnectProbe(target, hold, agentFolder, script, pluginDll,
+                detect, forceFallback, fallbackCommand);
             Application.Run(probe);
             return probe.ExitCode;
         }

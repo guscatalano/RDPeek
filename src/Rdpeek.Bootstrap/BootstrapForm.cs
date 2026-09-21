@@ -31,6 +31,9 @@ internal sealed class BootstrapForm : Form
 
     private int _lastState = -1;
     private bool _reachedConnected;
+    private bool _agentDetected;
+    private string? _startProgram;
+    private AgentWatch? _watch;
 
     public BootstrapForm()
     {
@@ -48,7 +51,7 @@ internal sealed class BootstrapForm : Form
         _provision.Click += OnProvision;
         _disconnect.Click += (_, _) => Disconnect("Disconnected by user.");
         _poll.Tick += OnPoll;
-        FormClosing += (_, _) => { try { Script(_rdp.Control).Disconnect(); } catch { /* not connected */ } };
+        FormClosing += (_, _) => { try { Script(_rdp.Control).Disconnect(); } catch { /* not connected */ } _watch?.Dispose(); };
 
         (_agentFolder.Text, _script.Text) = GuessDefaults();
     }
@@ -169,6 +172,17 @@ internal sealed class BootstrapForm : Form
             dynamic sec = rdp.SecuredSettings2;
             sec.StartProgram = startProgram;
             sec.WorkDir = uncWorkDir;
+            // Forward Windows-key combinations to the session, so the Win+R fallback can reach it.
+            TrySet("KeyboardHookMode", () => sec.KeyboardHookMode = 1);
+
+            // Load the RDPeek plugin (via the shim) so we can *detect* the agent's DVC check-in — the
+            // primary success signal. Best-effort: if the shim isn't beside us, detection falls back
+            // to tailing the plugin log, and failing that, the Win+R provisioning fallback still runs.
+            var shim = FindShim();
+            if (shim is not null) { TrySet("PluginDlls", () => adv.PluginDlls = shim); Log($"  detection plugin: {shim}"); }
+
+            _startProgram = startProgram;
+            _watch = new AgentWatch();   // start the broker pipe + log baseline before connecting
 
             Log($"Connecting to {host} as {(user.Length > 0 ? user : "(you'll be prompted)")} …");
             Log($"  redirecting the client drive and running:");
@@ -176,6 +190,7 @@ internal sealed class BootstrapForm : Form
 
             _lastState = -1;
             _reachedConnected = false;
+            _agentDetected = false;
             rdp.Connect();
 
             _poll.Start();
@@ -207,14 +222,17 @@ internal sealed class BootstrapForm : Form
                 break;
             case 1:
                 _reachedConnected = true;
-                Log("State: connected — the install script is running in the session; it logs off when done.");
+                Log("State: connected — AlternateShell is running the installer; watching for the agent to check in…");
+                _ = DetectAndMaybeFallbackAsync();
                 break;
             case 0:
                 _poll.Stop();
                 _provision.Enabled = true;
                 _disconnect.Enabled = false;
-                if (_reachedConnected)
-                    Log("Done. The agent is installed and a scheduled task will auto-start it on every future RDP connection to this host.");
+                if (_reachedConnected && _agentDetected)
+                    Log("Done. Agent detected — it will auto-start on every future RDP connection to this host.");
+                else if (_reachedConnected)
+                    Log("Session ended, but the agent was not detected — verify provisioning on the host (or re-run).");
                 else
                     Log("Disconnected before logon completed — check the host name, credentials, and that RDP is enabled on the target.");
                 break;
@@ -228,6 +246,51 @@ internal sealed class BootstrapForm : Form
         _provision.Enabled = true;
         _disconnect.Enabled = false;
         Log(why);
+    }
+
+    /// <summary>AlternateShell is primary; watch for the agent's check-in (broker report OR plugin
+    /// log — whichever wins). If none arrives, inject Win+R + the same StartProgram into the session,
+    /// then watch once more. Mirrors the headless probe's strategy.</summary>
+    private async Task DetectAndMaybeFallbackAsync()
+    {
+        if (_watch is null) return;
+
+        var signal = await _watch.WaitAsync(TimeSpan.FromSeconds(20));
+        if (signal is not null) { _agentDetected = true; Log($"Agent detected — {signal}."); return; }
+
+        if (string.IsNullOrEmpty(_startProgram)) { Log("No check-in and no command to fall back to."); return; }
+        Log("No agent check-in — AlternateShell may have been ignored. Trying the Win+R fallback…");
+        await RunFallbackAsync(_startProgram!);
+
+        var after = await _watch.WaitAsync(TimeSpan.FromSeconds(20));
+        if (after is not null) { _agentDetected = true; Log($"Agent detected after fallback — {after}."); }
+        else Log("Agent still not detected after the fallback.");
+    }
+
+    /// <summary>Resolve the control's input child window (UI thread) and post Win+R + the command to
+    /// it off-thread — window-targeted, so it reaches the session without stealing focus and never
+    /// leaks to the local desktop.</summary>
+    private async Task RunFallbackAsync(string command)
+    {
+        Log($"Fallback: Win+R → {command}");
+        var target = (IntPtr)Invoke(() => { Activate(); return SessionKeys.FindInputWindow(_rdp.Handle); });
+        await Task.Delay(1200);                       // let the session desktop settle
+        await Task.Run(() => SessionKeys.RunViaWinR(target, command));
+    }
+
+    /// <summary>Locate rdpeek-vc-shim.dll: beside the exe (a published bundle), else the VcShim build
+    /// output in a repo checkout. Null if not found (detection then relies on the plugin log only).</summary>
+    private static string? FindShim()
+    {
+        var here = Path.Combine(AppContext.BaseDirectory, "rdpeek-vc-shim.dll");
+        if (File.Exists(here)) return here;
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        for (var i = 0; i < 8 && dir is not null; i++, dir = dir.Parent)
+        {
+            var p = Path.Combine(dir.FullName, "src", "Rdpeek.VcShim", "bin", "rdpeek-vc-shim.dll");
+            if (File.Exists(p)) return p;
+        }
+        return null;
     }
 
     // ---- helpers -----------------------------------------------------------
