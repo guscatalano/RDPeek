@@ -39,7 +39,53 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
         _router = new EnvelopeRouter(env => { WriteEnvelope(env); return Task.CompletedTask; });
 
         Broker.Report("connected", Environment.ProcessId, _seq);
+        Broker.CommandReceived += OnCommand;
         Task.Run(PollLoopAsync);
+    }
+
+    private long _nextTid;
+
+    /// <summary>Handle a companion → plugin command. Currently the file pull: pull a remote file over
+    /// this channel and write it locally, reporting progress and completion back over the broker.</summary>
+    private void OnCommand(string line)
+    {
+        if (Broker.Parse(line) is not { } cmd || cmd.kind != "pull") return;
+        var parts = cmd.payload.Split('\t');
+        if (parts.Length < 2) return;
+        _ = RunPullAsync(parts[0], parts[1]);
+    }
+
+    private async Task RunPullAsync(string remotePath, string localDest)
+    {
+        ulong tid = (ulong)Interlocked.Increment(ref _nextTid);
+        Logger.Log($"file pull: '{remotePath}' -> '{localDest}'");
+        try
+        {
+            var dir = Path.GetDirectoryName(localDest);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            using var dest = new FileStream(localDest, FileMode.Create, FileAccess.Write, FileShare.None);
+
+            var receiver = new FilePullReceiver(_router, tid, dest);
+            long lastReport = 0;
+            receiver.Progress = (written, total) =>
+            {
+                if (written - lastReport >= 512 * 1024 || written == total)   // throttle
+                {
+                    lastReport = written;
+                    Broker.Send(Broker.Format("pullprogress", Environment.ProcessId, _seq, $"{written}\t{total}\t{localDest}"));
+                }
+            };
+
+            var result = await receiver.RunAsync(remotePath, _cts.Token);
+            Broker.Send(Broker.Format("pulldone", Environment.ProcessId, _seq,
+                $"{(result.Ok ? 1 : 0)}\t{result.Bytes}\t{localDest}\t{result.Message}"));
+            Logger.Log($"file pull done: ok={result.Ok} bytes={result.Bytes} {result.Message}");
+        }
+        catch (Exception ex)
+        {
+            Broker.Send(Broker.Format("pulldone", Environment.ProcessId, _seq, $"0\t0\t{localDest}\t{ex.Message}"));
+            Logger.Log($"file pull error: {ex.Message}");
+        }
     }
 
     private void WriteEnvelope(Envelope env)
@@ -201,6 +247,7 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
     public int OnClose()
     {
         Logger.Log("channel closed");
+        Broker.CommandReceived -= OnCommand;
         _cts.Cancel();
         Broker.Report("listening", Environment.ProcessId, _seq);
         return 0;
