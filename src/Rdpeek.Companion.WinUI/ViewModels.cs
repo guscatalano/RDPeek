@@ -26,11 +26,33 @@ public sealed record ProcRow(uint Pid, string Image, string User, string Mem);
 
 public sealed record ChannelRow(string Name, string Kind, string Activation, string Module, string Clsid);
 
-public sealed record NetRow(string Proto, string Local, string Remote, string State, string Process);
+/// <summary>Cached brushes for state coloring, so records don't allocate one per row.</summary>
+internal static class UiBrushes
+{
+    public static readonly Brush Ok = new SolidColorBrush(Colors.MediumSeaGreen);
+    public static readonly Brush Info = new SolidColorBrush(Colors.CornflowerBlue);
+    public static readonly Brush Muted = new SolidColorBrush(Colors.Gray);
+}
 
-public sealed record SessionRow(uint Id, string Station, string User, string State, string Client);
+public sealed record NetRow(string Proto, string Local, string Remote, string State, string Process)
+{
+    public Brush StateBrush => State switch
+    {
+        "ESTABLISHED" => UiBrushes.Ok,
+        "LISTEN" => UiBrushes.Info,
+        _ => UiBrushes.Muted,
+    };
+}
 
-public sealed record ServiceRow(string Name, string Status, string StartType, string Display);
+public sealed record SessionRow(uint Id, string Station, string User, string State, string Client)
+{
+    public Brush StateBrush => State is "Active" or "Connected" ? UiBrushes.Ok : UiBrushes.Muted;
+}
+
+public sealed record ServiceRow(string Name, string Status, string StartType, string Display)
+{
+    public Brush StatusBrush => Status == "Running" ? UiBrushes.Ok : UiBrushes.Muted;
+}
 
 /// <summary>Live traffic on one remote DVC, as measured on the session host.</summary>
 public sealed record DvcRow(string Name, string Sent, string Received, string SendRate, string RecvRate, string Rtt);
@@ -84,6 +106,13 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _perfText = "";
     [ObservableProperty] private string _dvcNote = "Waiting for the agent to report channel traffic…";
     [ObservableProperty] private string _clientMeasured = "";
+
+    // Server-vs-client round-trip on the diagnostics channel (the DESIGN.md asymmetry, made legible).
+    [ObservableProperty] private string _rttServer = "—";
+    [ObservableProperty] private string _rttClient = "—";
+    [ObservableProperty] private string _rttGap = "—";
+    [ObservableProperty] private string _rttExplain =
+        "Waiting for both the agent's and the plugin's measurements of the diagnostics channel.";
     [ObservableProperty] private string _linkNote = "";
     [ObservableProperty] private string _status = "Starting…";
 
@@ -465,6 +494,38 @@ public partial class MainViewModel : ObservableObject
         UpdateDvcTraffic(st?.Counters);
         UpdateLinkQuality(st?.Perf);
         UpdateClientMeasured(st?.Link);
+        UpdateRttComparison(st?.Counters, st?.Link);
+    }
+
+    /// <summary>
+    /// The one genuinely two-sided number: the agent times the channel round-trip on the session
+    /// host (network only), the plugin times the same channel locally (network + whatever is
+    /// queueing in the DVC). The gap is that queueing — the whole point of showing both.
+    /// </summary>
+    private void UpdateRttComparison(CounterSample? sample, ClientLink? link)
+    {
+        var ch = link is null ? null : sample?.Channels.FirstOrDefault(c => c.Name == link.Channel);
+        double? server = ch is { RttMs: > 0 } ? ch.RttMs : null;
+        double? client = link is { RttMsLast: > 0 } ? link.RttMsLast : null;
+
+        RttServer = server is { } s ? $"{s:0.0} ms" : "—";
+        RttClient = client is { } c ? $"{c:0.0} ms" : "—";
+
+        if (server is { } sv && client is { } cl)
+        {
+            double gap = cl - sv;
+            RttGap = $"{gap:0.0} ms";
+            RttExplain = gap > 0.2
+                ? "The plugin sees the network plus time spent queueing inside the DVC; the agent sees only the network. The gap is that DVC/queueing overhead."
+                : "Client and server round-trips agree — negligible DVC queueing right now.";
+        }
+        else
+        {
+            RttGap = "—";
+            RttExplain = client is null
+                ? "Waiting for the plugin's own round-trip measurement of the diagnostics channel."
+                : "The agent isn't reporting a per-channel RTT for this channel (the perfmon set may not expose one), so only the client-side number is available.";
+        }
     }
 
     /// <summary>

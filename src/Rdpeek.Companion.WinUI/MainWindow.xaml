@@ -232,12 +232,37 @@
                             </Grid.RowDefinitions>
                             <TextBlock Grid.Row="0" Margin="12,10,12,2" Opacity="0.8" TextWrapping="Wrap"
                                        Text="Live traffic per dynamic virtual channel, measured by the agent on the remote session host. Sent = host → client." />
-                            <StackPanel Grid.Row="1" Margin="12,0,12,8" Spacing="4">
-                                <TextBlock Opacity="0.65" TextWrapping="Wrap"
-                                           Text="{x:Bind Vm.DvcNote, Mode=OneWay}" />
-                                <!-- The client's own numbers for its channel, to compare against the row above. -->
-                                <TextBlock Opacity="0.85" TextWrapping="Wrap" FontFamily="Consolas"
-                                           Text="{x:Bind Vm.ClientMeasured, Mode=OneWay}" />
+                            <StackPanel Grid.Row="1" Margin="12,0,12,8" Spacing="8">
+                                <!-- Server-vs-client round-trip: the DESIGN.md asymmetry, made legible. -->
+                                <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                                        CornerRadius="6" Padding="14,10">
+                                    <StackPanel Spacing="8">
+                                        <TextBlock Text="Round-trip on dvc::diag::inspector — measured from both ends" FontWeight="SemiBold" />
+                                        <StackPanel Orientation="Horizontal" Spacing="36">
+                                            <StackPanel>
+                                                <TextBlock Text="Server (agent)" Opacity="0.7" FontSize="12" />
+                                                <TextBlock Text="{x:Bind Vm.RttServer, Mode=OneWay}" FontFamily="Consolas" FontSize="20" />
+                                                <TextBlock Text="network only" Opacity="0.5" FontSize="11" />
+                                            </StackPanel>
+                                            <TextBlock Text="+" FontSize="20" VerticalAlignment="Center" Opacity="0.4" />
+                                            <StackPanel>
+                                                <TextBlock Text="Client (plugin)" Opacity="0.7" FontSize="12" />
+                                                <TextBlock Text="{x:Bind Vm.RttClient, Mode=OneWay}" FontFamily="Consolas" FontSize="20" />
+                                                <TextBlock Text="network + DVC queueing" Opacity="0.5" FontSize="11" />
+                                            </StackPanel>
+                                            <TextBlock Text="=" FontSize="20" VerticalAlignment="Center" Opacity="0.4" />
+                                            <StackPanel>
+                                                <TextBlock Text="Gap" Opacity="0.7" FontSize="12" />
+                                                <TextBlock Text="{x:Bind Vm.RttGap, Mode=OneWay}" FontFamily="Consolas" FontSize="20"
+                                                           Foreground="{ThemeResource SystemFillColorCautionBrush}" />
+                                                <TextBlock Text="DVC queueing" Opacity="0.5" FontSize="11" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <TextBlock Text="{x:Bind Vm.RttExplain, Mode=OneWay}" Opacity="0.6" TextWrapping="Wrap" FontSize="12" />
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Opacity="0.65" TextWrapping="Wrap" Text="{x:Bind Vm.DvcNote, Mode=OneWay}" />
                             </StackPanel>
                             <Grid Grid.Row="2" Padding="12,4" ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
@@ -523,7 +548,7 @@
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Grid.Column="0" Text="{x:Bind Local}" FontFamily="Consolas" TextTrimming="CharacterEllipsis" />
                                             <TextBlock Grid.Column="1" Text="{x:Bind Remote}" FontFamily="Consolas" Opacity="0.8" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Grid.Column="2" Text="{x:Bind State}" />
+                                            <TextBlock Grid.Column="2" Text="{x:Bind State}" Foreground="{x:Bind StateBrush}" />
                                             <TextBlock Grid.Column="3" Text="{x:Bind Process}" TextTrimming="CharacterEllipsis" />
                                         </Grid>
                                     </DataTemplate>
@@ -567,7 +592,7 @@
                                             <TextBlock Grid.Column="0" Text="{x:Bind Id}" />
                                             <TextBlock Grid.Column="1" Text="{x:Bind Station}" />
                                             <TextBlock Grid.Column="2" Text="{x:Bind User}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Grid.Column="3" Text="{x:Bind State}" />
+                                            <TextBlock Grid.Column="3" Text="{x:Bind State}" Foreground="{x:Bind StateBrush}" />
                                             <TextBlock Grid.Column="4" Text="{x:Bind Client}" Opacity="0.8" TextTrimming="CharacterEllipsis" />
                                         </Grid>
                                     </DataTemplate>
@@ -608,7 +633,7 @@
                                                 <ColumnDefinition Width="0.12*" /><ColumnDefinition Width="0.54*" />
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Grid.Column="0" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Grid.Column="1" Text="{x:Bind Status}" />
+                                            <TextBlock Grid.Column="1" Text="{x:Bind Status}" Foreground="{x:Bind StatusBrush}" />
                                             <TextBlock Grid.Column="2" Text="{x:Bind StartType}" Opacity="0.8" />
                                             <TextBlock Grid.Column="3" Text="{x:Bind Display}" TextTrimming="CharacterEllipsis" Opacity="0.8" />
                                         </Grid>

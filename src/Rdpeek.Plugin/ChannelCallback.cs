@@ -199,10 +199,15 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
     private static string Clean(string s) =>
         s.Replace('\t', ' ').Replace('\n', ' ').Replace('\r', ' ').Replace('\x1e', ' ').Replace('\x1f', ' ');
 
+    private readonly object _writeLock = new();
+
     private void WriteEnvelope(Envelope env)
     {
         var frame = Frame.Encode(env);
-        int hr = _channel.Write((uint)frame.Length, frame, IntPtr.Zero);
+        int hr;
+        // The fast and slow poll loops both issue requests, so two threads can reach the channel
+        // at once — serialise the native Write (concurrency correlates fine by request_id).
+        lock (_writeLock) hr = _channel.Write((uint)frame.Length, frame, IntPtr.Zero);
         if (hr < 0) { Logger.Log($"channel Write failed 0x{hr:X8}"); return; }
         Interlocked.Add(ref _bytesSent, frame.Length);
         Tap("out", frame);
@@ -268,6 +273,9 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
             else
                 Logger.Log($"unexpected reply to Hello: {caps?.BodyCase.ToString() ?? "none"}");
 
+            // Live signals (RTT, DVC counters, frame stats) tick fast; inventory is polled slower.
+            _ = FastLoopAsync();
+
             bool loggedHost = false;
             int cycle = 0;
             while (!_cts.IsCancellationRequested)
@@ -297,18 +305,6 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
                 var perf = await RequestAsync(new Envelope { PerfRequest = new PerfRequest() });
                 if (perf?.BodyCase == Envelope.BodyOneofCase.PerfSnapshot) Push("perf", perf.PerfSnapshot);
 
-                // interval_ms = 0: one-shot snapshot, not a subscription (see diag.proto).
-                var dvc = await RequestAsync(new Envelope { CounterSubscribe = new CounterSubscribe { IntervalMs = 0 } });
-                if (dvc?.BodyCase == Envelope.BodyOneofCase.CounterSample) Push("counters", dvc.CounterSample);
-
-                // Last, so the byte counts include everything this cycle sent.
-                await MeasureRttAsync();
-                Push("link", LinkStats());
-
-                // Frame-inspector stats for the companion's Frames view.
-                Broker.Send(Broker.Format("framestats", Environment.ProcessId, _seq,
-                    $"{Interlocked.Read(ref _framesIn)}\t{Interlocked.Read(ref _framesOut)}\t{Interlocked.Read(ref _frameAnomalies)}"));
-
                 // Every 3rd cycle (~9s): sessions + services (change slowly, bigger payloads).
                 if (cycle % 3 == 0)
                 {
@@ -326,6 +322,33 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
         catch (Exception ex)
         {
             Logger.Log($"poll loop error: {ex.Message}");
+        }
+    }
+
+    /// <summary>The "live" signals a user watches change in real time — round-trip time, per-channel
+    /// DVC traffic, and frame counts — polled at ~1s instead of riding the 3s inventory cycle.</summary>
+    private async Task FastLoopAsync()
+    {
+        try
+        {
+            while (!_cts.IsCancellationRequested)
+            {
+                await MeasureRttAsync();
+                Push("link", LinkStats());
+
+                // interval_ms = 0: one-shot snapshot, not a subscription (see diag.proto).
+                var dvc = await RequestAsync(new Envelope { CounterSubscribe = new CounterSubscribe { IntervalMs = 0 } });
+                if (dvc?.BodyCase == Envelope.BodyOneofCase.CounterSample) Push("counters", dvc.CounterSample);
+
+                Broker.Send(Broker.Format("framestats", Environment.ProcessId, _seq,
+                    $"{Interlocked.Read(ref _framesIn)}\t{Interlocked.Read(ref _framesOut)}\t{Interlocked.Read(ref _frameAnomalies)}"));
+
+                try { await Task.Delay(1000, _cts.Token); } catch { break; }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"fast loop error: {ex.Message}");
         }
     }
 
