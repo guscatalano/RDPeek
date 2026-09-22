@@ -74,10 +74,12 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
             if (reply.BodyCase == Envelope.BodyOneofCase.FileList)
             {
                 var fl = reply.FileList;
-                // Single line for the broker: path <RS> name<US>d|f<US>size <RS> ...
-                var sb = new System.Text.StringBuilder(fl.Path);
+                // Single line for the broker: path<US>root <RS> name<US>d|f<US>size<US>mtimeTicks <RS> ...
+                var sb = new System.Text.StringBuilder();
+                sb.Append(fl.Path).Append('\x1f').Append(_defaultRoot);
                 foreach (var it in fl.Items)
-                    sb.Append('\x1e').Append(it.Name).Append('\x1f').Append(it.IsDir ? 'd' : 'f').Append('\x1f').Append(it.Size);
+                    sb.Append('\x1e').Append(it.Name).Append('\x1f').Append(it.IsDir ? 'd' : 'f')
+                      .Append('\x1f').Append(it.Size).Append('\x1f').Append(it.MtimeTicks);
                 Broker.Send(Broker.Format("filelist", Environment.ProcessId, _seq, sb.ToString()));
             }
             else

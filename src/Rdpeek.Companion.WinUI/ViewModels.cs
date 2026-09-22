@@ -73,7 +73,10 @@ public sealed record FrameRow(long Seq, string Time, string Dir, string Message,
     string Note, bool IsAnomaly, IReadOnlyList<FrameFieldRow> Fields);
 
 /// <summary>An entry in the remote file browser.</summary>
-public sealed record RemoteEntry(string Glyph, string Name, string Size, bool IsDir, string FullPath);
+public sealed record RemoteEntry(string Glyph, string Name, string Size, string Modified, bool IsDir, string FullPath);
+
+/// <summary>One clickable segment of the file browser's path.</summary>
+public sealed record BreadcrumbRow(string Name, string FullPath);
 
 public partial class MainViewModel : ObservableObject
 {
@@ -139,6 +142,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _currentRemotePath = "";
     [ObservableProperty] private bool _browserLoading;
     public ObservableCollection<RemoteEntry> RemoteEntries { get; } = new();
+    public ObservableCollection<BreadcrumbRow> Breadcrumbs { get; } = new();
 
     public MainViewModel(DispatcherQueue dispatcher)
     {
@@ -229,7 +233,35 @@ public partial class MainViewModel : ObservableObject
         var st = ConnectedAgent();
         if (st is null) return;
         if (entry.IsDir) { BrowserLoading = true; SendList(st.Pid, entry.FullPath); }
-        else { RemotePath = entry.FullPath; OnRemotePathChanged(entry.FullPath); PullStatus = $"Selected {entry.Name} — click Pull."; }
+        else { RemotePath = entry.FullPath; OnRemotePathChanged(entry.FullPath); PullStatus = $"Selected {entry.Name} — double-click or click Pull to fetch it."; }
+    }
+
+    /// <summary>Navigate the browser to a directory (used by the breadcrumb).</summary>
+    [RelayCommand]
+    private void Navigate(string? path)
+    {
+        if (path is null) return;
+        var st = ConnectedAgent();
+        if (st is null) return;
+        BrowserLoading = true;
+        SendList(st.Pid, path);
+    }
+
+    /// <summary>Re-list the current directory (or the root if none is open yet).</summary>
+    [RelayCommand]
+    private void RefreshDir()
+    {
+        if (string.IsNullOrEmpty(CurrentRemotePath)) Browse();
+        else Navigate(CurrentRemotePath);
+    }
+
+    /// <summary>Double-click a file → select and pull it in one gesture (called from code-behind).</summary>
+    public void PullEntry(RemoteEntry entry)
+    {
+        if (entry.IsDir) { OpenEntry(entry); return; }
+        RemotePath = entry.FullPath;
+        OnRemotePathChanged(entry.FullPath);
+        Pull();
     }
 
     private void SendList(int pid, string path)
@@ -247,29 +279,52 @@ public partial class MainViewModel : ObservableObject
             PullStatus = $"Couldn't list {(e.Length > 0 ? e[0] : "")}: {(e.Length > 1 ? e[1] : "error")}";
             return;
         }
+
         var recs = payload.Split('\x1e');
-        CurrentRemotePath = recs[0];
-        RemoteEntries.Clear();
-        var parent = ParentPath(recs[0]);
-        if (parent is not null) RemoteEntries.Add(new RemoteEntry("\uE72B", "..", "", true, parent));   // up arrow
+        var head = recs[0].Split('\x1f');          // path <US> root
+        string path = head[0];
+        string root = head.Length > 1 ? head[1] : head[0];
+        CurrentRemotePath = path;
+        BuildBreadcrumbs(root, path);
+
+        var entries = new List<RemoteEntry>();
         foreach (var r in recs.Skip(1))
         {
             var f = r.Split('\x1f');
             if (f.Length < 3) continue;
             bool dir = f[1] == "d";
             string size = dir ? "" : (ulong.TryParse(f[2], out var b) ? Bytes(b) : "");
-            RemoteEntries.Add(new RemoteEntry(dir ? "\uE8B7" : "\uE7C3", f[0], size, dir, CombinePath(recs[0], f[0])));   // folder / document glyph
+            string modified = f.Length > 3 && long.TryParse(f[3], out var ticks) && ticks > 0
+                ? new DateTime(ticks, DateTimeKind.Utc).ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                : "";
+            entries.Add(new RemoteEntry(dir ? "" : "", f[0], size, modified, dir, CombinePath(path, f[0])));
         }
-        PullStatus = CurrentRemotePath;
+
+        RemoteEntries.Clear();
+        foreach (var e in entries.OrderByDescending(e => e.IsDir).ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase))
+            RemoteEntries.Add(e);
+        PullStatus = RemoteEntries.Count == 0 ? "(empty directory)" : path;
     }
 
-    private static string? ParentPath(string path)
+    private void BuildBreadcrumbs(string root, string path)
     {
-        var p = path.TrimEnd('\\');
-        int i = p.LastIndexOf('\\');
-        if (i < 0) return null;
-        if (i == 2 && p[1] == ':') return p[..3];   // "C:\" root — keep the backslash
-        return p[..i];
+        Breadcrumbs.Clear();
+        root = root.TrimEnd('\\');
+        path = path.TrimEnd('\\');
+        if (root.Length == 0) { Breadcrumbs.Add(new BreadcrumbRow(path, path)); return; }
+
+        // Root crumb labelled by its leaf; then one crumb per subfolder below the root.
+        int slash = root.LastIndexOf('\\');
+        Breadcrumbs.Add(new BreadcrumbRow(slash >= 0 ? root[(slash + 1)..] : root, root));
+        if (path.Length > root.Length && path.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+        {
+            string acc = root;
+            foreach (var seg in path[root.Length..].Split('\\', StringSplitOptions.RemoveEmptyEntries))
+            {
+                acc = acc + "\\" + seg;
+                Breadcrumbs.Add(new BreadcrumbRow(seg, acc));
+            }
+        }
     }
 
     private static string CombinePath(string dir, string name) => dir.TrimEnd('\\') + "\\" + name;

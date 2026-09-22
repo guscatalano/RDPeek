@@ -460,44 +460,77 @@
                             <TextBlock Grid.Row="0" Opacity="0.8" TextWrapping="Wrap"
                                        Text="Browse the remote agent's files (within its advertised roots) and pull one onto this machine — windowed, sha256-verified." />
 
+                            <!-- toolbar: browse / refresh + clickable breadcrumb -->
                             <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                <Button Content="Browse" Command="{x:Bind Vm.BrowseCommand}" />
+                                <Button Command="{x:Bind Vm.BrowseCommand}" ToolTipService.ToolTip="Browse the agent's file root">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon FontSize="14" Glyph="&#xE8B7;" /><TextBlock Text="Browse" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Command="{x:Bind Vm.RefreshDirCommand}" ToolTipService.ToolTip="Refresh this directory">
+                                    <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                                </Button>
                                 <ProgressRing IsActive="{x:Bind Vm.BrowserLoading, Mode=OneWay}" Width="18" Height="18" />
-                                <TextBlock VerticalAlignment="Center" FontFamily="Consolas" Opacity="0.8"
-                                           Text="{x:Bind Vm.CurrentRemotePath, Mode=OneWay}" />
+                                <ItemsControl ItemsSource="{x:Bind Vm.Breadcrumbs}" VerticalAlignment="Center">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:BreadcrumbRow">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="&#x203A;" Opacity="0.35" Margin="2,0" VerticalAlignment="Center" />
+                                                <Button Content="{x:Bind Name}" Click="OnBreadcrumbClick" Background="Transparent"
+                                                        BorderThickness="0" Padding="6,3" FontFamily="Consolas" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                             </StackPanel>
 
-                            <Grid Grid.Row="2">
-                                <ListView ItemsSource="{x:Bind Vm.RemoteEntries}" IsItemClickEnabled="True"
-                                          ItemClick="OnEntryClick" SelectionMode="None"
-                                          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6">
-                                    <ListView.ItemContainerStyle>
-                                        <Style TargetType="ListViewItem">
-                                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                            <Setter Property="Padding" Value="10,4" /><Setter Property="MinHeight" Value="0" />
-                                        </Style>
-                                    </ListView.ItemContainerStyle>
-                                    <ListView.ItemTemplate>
-                                        <DataTemplate x:DataType="local:RemoteEntry">
-                                            <Grid ColumnSpacing="10">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <FontIcon Grid.Column="0" FontSize="15" Glyph="{x:Bind Glyph}" />
-                                                <TextBlock Grid.Column="1" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Grid.Column="2" Text="{x:Bind Size}" FontFamily="Consolas" Opacity="0.6" />
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ListView.ItemTemplate>
-                                </ListView>
-                                <!-- Loading overlay while the directory listing round-trips to the agent. -->
-                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8"
-                                            Visibility="{x:Bind VisibleIf(Vm.BrowserLoading), Mode=OneWay}">
-                                    <ProgressRing IsActive="{x:Bind Vm.BrowserLoading, Mode=OneWay}" Width="36" Height="36"
-                                                  HorizontalAlignment="Center" />
-                                    <TextBlock Text="Listing remote directory…" Opacity="0.7" HorizontalAlignment="Center" />
-                                </StackPanel>
+                            <Grid Grid.Row="2" RowSpacing="0">
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                                <!-- column header -->
+                                <Grid Grid.Row="0" Padding="36,4,14,4" ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" /><ColumnDefinition Width="0.18*" /><ColumnDefinition Width="0.26*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Name" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="1" Text="Size" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="2" Text="Modified" FontWeight="SemiBold" />
+                                </Grid>
+                                <Grid Grid.Row="1">
+                                    <ListView ItemsSource="{x:Bind Vm.RemoteEntries}" IsItemClickEnabled="True"
+                                              ItemClick="OnEntryClick" DoubleTapped="OnEntryDoubleTapped" SelectionMode="None"
+                                              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6">
+                                        <ListView.ItemContainerStyle>
+                                            <Style TargetType="ListViewItem">
+                                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                                <Setter Property="Padding" Value="10,4" /><Setter Property="MinHeight" Value="0" />
+                                            </Style>
+                                        </ListView.ItemContainerStyle>
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate x:DataType="local:RemoteEntry">
+                                                <Grid ColumnSpacing="10">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="0.18*" /><ColumnDefinition Width="0.26*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <FontIcon Grid.Column="0" FontSize="15" Glyph="{x:Bind Glyph}" />
+                                                    <TextBlock Grid.Column="1" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Grid.Column="2" Text="{x:Bind Size}" FontFamily="Consolas" Opacity="0.6" />
+                                                    <TextBlock Grid.Column="3" Text="{x:Bind Modified}" FontFamily="Consolas" Opacity="0.55" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                    <!-- Loading overlay while the directory listing round-trips to the agent. -->
+                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8"
+                                                Visibility="{x:Bind VisibleIf(Vm.BrowserLoading), Mode=OneWay}">
+                                        <ProgressRing IsActive="{x:Bind Vm.BrowserLoading, Mode=OneWay}" Width="36" Height="36"
+                                                      HorizontalAlignment="Center" />
+                                        <TextBlock Text="Listing remote directory…" Opacity="0.7" HorizontalAlignment="Center" />
+                                    </StackPanel>
+                                </Grid>
                             </Grid>
 
                             <StackPanel Grid.Row="3" Spacing="8">

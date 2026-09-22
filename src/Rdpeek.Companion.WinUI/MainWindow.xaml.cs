@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 
 namespace Rdpeek.Companion.WinUI;
 
@@ -32,6 +33,18 @@ public sealed partial class MainWindow : Window
     {
         if (e.ClickedItem is RemoteEntry entry && Vm.OpenEntryCommand.CanExecute(entry))
             Vm.OpenEntryCommand.Execute(entry);
+    }
+
+    private void OnEntryDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if ((e.OriginalSource as FrameworkElement)?.DataContext is RemoteEntry entry)
+            Vm.PullEntry(entry);
+    }
+
+    private void OnBreadcrumbClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is BreadcrumbRow b)
+            Vm.NavigateCommand.Execute(b.FullPath);
     }
 
     /// <summary>x:Bind function helper: WinUI has no built-in bool→Visibility converter.</summary>
