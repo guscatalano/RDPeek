@@ -178,6 +178,11 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _dvcNote = "Waiting for the agent to report channel traffic…";
     [ObservableProperty] private string _clientMeasured = "";
 
+    // Channel drill-down: select a row in the DVC traffic table to see its full detail.
+    private string _selectedChannelName = "";
+    [ObservableProperty] private DvcRow? _selectedDvcChannel;
+    [ObservableProperty] private string _channelDetail = "Select a channel above to see its config and full counters.";
+
     // Server-vs-client round-trip on the diagnostics channel (the DESIGN.md asymmetry, made legible).
     [ObservableProperty] private string _rttServer = "—";
     [ObservableProperty] private string _rttClient = "—";
@@ -946,8 +951,42 @@ public partial class MainViewModel : ObservableObject
     /// Per-channel traffic measured by the agent on the session host. Direction is from
     /// the server's point of view: "sent" is host → client.
     /// </summary>
+    partial void OnSelectedDvcChannelChanged(DvcRow? value)
+    {
+        if (value is not null) _selectedChannelName = value.Name;   // survive table rebuilds
+        if (value is null)
+        {
+            ChannelDetail = "Select a channel above to see its config and full counters.";
+            return;
+        }
+
+        var st = ConnectedAgent();
+        var c = st?.Counters?.Channels.FirstOrDefault(x => x.Name == value.Name);
+        var cfg = Channels.FirstOrDefault(x => x.Name == value.Name);
+        bool isDiag = value.Name.Contains("diag::", StringComparison.OrdinalIgnoreCase);
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"{value.Name}");
+        sb.AppendLine(cfg is not null
+            ? $"Client config :  {cfg.Kind}  ·  {cfg.Activation}  ·  {cfg.Module}"
+            : "Client config :  built-in, or not registered as a client-side plugin on this machine");
+        if (c is not null)
+        {
+            sb.AppendLine($"Traffic       :  sent {Bytes(c.BytesSent)}  ·  received {Bytes(c.BytesReceived)}");
+            sb.AppendLine($"Rates         :  {Rate(c.SendRateBps)} up  ·  {Rate(c.RecvRateBps)} down");
+            string rtt = c.RttMs > 0 ? $"RTT {c.RttMs:0.#} ms" : "RTT —";
+            string bw = c.BandwidthKbps > 0 ? $"  ·  bandwidth {c.BandwidthKbps:0} kbps" : "";
+            sb.AppendLine($"Health        :  {rtt}{bw}  ·  {c.CurrentlyOpen} open instance(s)");
+        }
+        sb.Append(isDiag
+            ? "Frames        :  this is a diagnostics channel — its per-frame feed is on the Frames tab."
+            : "Frames        :  not tapped (the inspector only frames the diagnostics channel).");
+        ChannelDetail = sb.ToString();
+    }
+
     private void UpdateDvcTraffic(CounterSample? sample)
     {
+        string keep = _selectedChannelName;   // Clear() nulls the selection; re-select by name below
         DvcTraffic.Clear();
         if (sample is null)
         {
@@ -963,6 +1002,10 @@ public partial class MainViewModel : ObservableObject
                 Rate(c.SendRateBps),
                 Rate(c.RecvRateBps),
                 c.RttMs > 0 ? $"{c.RttMs:0.#} ms" : "—"));
+
+        // Restore the drill-down selection (and refresh its detail with the new numbers).
+        if (!string.IsNullOrEmpty(keep))
+            SelectedDvcChannel = DvcTraffic.FirstOrDefault(r => r.Name == keep);
 
         string source = sample.Source switch
         {

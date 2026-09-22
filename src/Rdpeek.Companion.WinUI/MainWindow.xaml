@@ -271,9 +271,10 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <TextBlock Grid.Row="0" Margin="12,10,12,2" Opacity="0.8" TextWrapping="Wrap"
-                                       Text="Live traffic per dynamic virtual channel, measured by the agent on the remote session host. Sent = host → client." />
+                                       Text="Live traffic per dynamic virtual channel, measured by the agent on the remote session host. Sent = host → client. Click a channel for its full detail." />
                             <StackPanel Grid.Row="1" Margin="12,0,12,8" Spacing="8">
                                 <!-- Server-vs-client round-trip: the DESIGN.md asymmetry, made legible. -->
                                 <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
@@ -319,7 +320,8 @@
                                 <TextBlock Grid.Column="4" Text="Recv rate" FontWeight="SemiBold" />
                                 <TextBlock Grid.Column="5" Text="RTT" FontWeight="SemiBold" />
                             </Grid>
-                            <ListView Grid.Row="2" Margin="0,32,0,0" ItemsSource="{x:Bind Vm.DvcTraffic}" SelectionMode="None">
+                            <ListView Grid.Row="2" Margin="0,32,0,0" ItemsSource="{x:Bind Vm.DvcTraffic}"
+                                      SelectionMode="Single" SelectedItem="{x:Bind Vm.SelectedDvcChannel, Mode=TwoWay}">
                                 <ListView.ItemContainerStyle>
                                     <Style TargetType="ListViewItem">
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -344,6 +346,14 @@
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
                             </ListView>
+
+                            <!-- channel drill-down: config + full counters for the selected channel -->
+                            <Border Grid.Row="3" Margin="12,6,12,12" Padding="14,10" CornerRadius="6"
+                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                <TextBlock Text="{x:Bind Vm.ChannelDetail, Mode=OneWay}" FontFamily="Consolas"
+                                           FontSize="12" LineHeight="19" TextWrapping="Wrap" />
+                            </Border>
                         </Grid>
                     </Border>
                 </Grid>
