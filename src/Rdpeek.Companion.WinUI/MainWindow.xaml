@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:Rdpeek.Companion.WinUI"
+    xmlns:client="using:Rdpeek.Client"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls">
 
     <Grid Padding="16" RowSpacing="10">
@@ -19,6 +20,8 @@
             <TextBlock Text="RDPeek" FontSize="26" FontWeight="SemiBold" VerticalAlignment="Center" />
             <Button Content="Copy agent-install command" Command="{x:Bind Vm.CopyInstallCommand}" VerticalAlignment="Center" />
             <Button Content="Refresh" Command="{x:Bind Vm.RefreshCommand}" VerticalAlignment="Center" />
+            <Button Content="Export bundle" Command="{x:Bind Vm.ExportBundleCommand}" VerticalAlignment="Center"
+                    ToolTipService.ToolTip="Collect host, channels, counters, frames and diagnostics into a shareable JSON file" />
         </StackPanel>
 
         <!-- persistent connection / liveness bar (applies to whichever tab is open) -->
@@ -45,6 +48,7 @@
                 <muxc:NavigationViewItem Content="DVC traffic" Tag="dvc" />
                 <muxc:NavigationViewItem Content="Frames" Tag="frames" />
                 <muxc:NavigationViewItem Content="Files" Tag="files" />
+                <muxc:NavigationViewItem Content="Diagnostics" Tag="diag" />
                 <muxc:NavigationViewItemHeader Content="Host (via agent)" />
                 <muxc:NavigationViewItem Content="Network" Tag="net" />
                 <muxc:NavigationViewItem Content="Sessions" Tag="sess" />
@@ -314,13 +318,44 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
                             <TextBlock Grid.Row="0" Margin="12,10,12,2" Opacity="0.8" TextWrapping="Wrap"
                                        Text="RDP link quality: round-trip time, bandwidth, loss and frame health for the connection itself." />
                             <TextBlock Grid.Row="1" Margin="12,0,12,8" Opacity="0.65" TextWrapping="Wrap"
                                        Text="{x:Bind Vm.LinkNote, Mode=OneWay}" />
-                            <Grid Grid.Row="2" Padding="12,4" ColumnSpacing="8">
+
+                            <!-- on-demand latency probe -->
+                            <Border Grid.Row="2" Margin="12,0,12,8" Padding="12,10" CornerRadius="6"
+                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                <StackPanel Spacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                        <Button Command="{x:Bind Vm.ProbeCommand}">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <FontIcon FontSize="14" Glyph="&#xEC4A;" /><TextBlock Text="Run 20 pings" />
+                                            </StackPanel>
+                                        </Button>
+                                        <ProgressRing IsActive="{x:Bind Vm.ProbeRunning, Mode=OneWay}" Width="18" Height="18" />
+                                        <TextBlock VerticalAlignment="Center" FontFamily="Consolas" Opacity="0.85"
+                                                   Text="{x:Bind Vm.ProbeResult, Mode=OneWay}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <ItemsControl ItemsSource="{x:Bind Vm.ProbeSamples}" Height="44">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" VerticalAlignment="Bottom" /></ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="local:ProbeBar">
+                                                <Rectangle Width="7" Margin="1,0" Height="{x:Bind Height}" VerticalAlignment="Bottom"
+                                                           Fill="{ThemeResource AccentFillColorDefaultBrush}" RadiusX="1" RadiusY="1" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                            <Grid Grid.Row="3" Padding="12,4" ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="0.55*" /><ColumnDefinition Width="0.20*" />
                                     <ColumnDefinition Width="0.25*" />
@@ -329,7 +364,7 @@
                                 <TextBlock Grid.Column="1" Text="Value" FontWeight="SemiBold" />
                                 <TextBlock Grid.Column="2" Text="Instance" FontWeight="SemiBold" />
                             </Grid>
-                            <ListView Grid.Row="2" Margin="0,32,0,0" ItemsSource="{x:Bind Vm.LinkQuality}" SelectionMode="None">
+                            <ListView Grid.Row="3" Margin="0,32,0,0" ItemsSource="{x:Bind Vm.LinkQuality}" SelectionMode="None">
                                 <ListView.ItemContainerStyle>
                                     <Style TargetType="ListViewItem">
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -545,6 +580,67 @@
                                 </StackPanel>
                                 <TextBlock Opacity="0.75" TextWrapping="Wrap" Text="{x:Bind Vm.PullStatus, Mode=OneWay}" />
                             </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- ===================== DIAGNOSTICS ===================== -->
+                <Grid x:Name="DiagView" Visibility="Collapsed">
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                        <Grid Margin="14" RowSpacing="10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Opacity="0.8" TextWrapping="Wrap"
+                                       Text="Why won't my plugin load? These are rdpeek-doctor's registration checks, run here: the Terminal Server Client AddIns, CLSID resolution, module presence + bitness, and a live CoCreateInstance smoke test against IWTSPlugin." />
+
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                <Button Command="{x:Bind Vm.RunDiagnosticsCommand}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon FontSize="14" Glyph="&#xE72C;" /><TextBlock Text="Re-run" />
+                                    </StackPanel>
+                                </Button>
+                                <TextBlock VerticalAlignment="Center" FontWeight="SemiBold"
+                                           Text="{x:Bind Vm.DiagnosticsSummary, Mode=OneWay}" />
+                            </StackPanel>
+
+                            <ScrollViewer Grid.Row="2">
+                                <ItemsControl ItemsSource="{x:Bind Vm.Diagnostics}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="client:PluginReport">
+                                            <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                                                    CornerRadius="6" Padding="12,10" Margin="0,0,0,8">
+                                                <StackPanel Spacing="4">
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <FontIcon FontSize="16" Glyph="{x:Bind local:Ui.SeverityGlyph(Worst)}"
+                                                                  Foreground="{x:Bind local:Ui.SeverityBrush(Worst)}" VerticalAlignment="Center" />
+                                                        <TextBlock Text="{x:Bind PluginKey}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                        <TextBlock Text="{x:Bind Source}" Opacity="0.5" VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="{x:Bind Name}" FontFamily="Consolas" FontSize="12" Opacity="0.75"
+                                                               TextWrapping="Wrap" />
+                                                    <TextBlock Text="{x:Bind local:Ui.PluginDetail(Activation, ModulePath, Bitness)}"
+                                                               FontFamily="Consolas" FontSize="12" Opacity="0.6" TextWrapping="Wrap" />
+                                                    <ItemsControl ItemsSource="{x:Bind Checks}" Margin="0,4,0,0">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate x:DataType="client:DoctorCheck">
+                                                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,0">
+                                                                    <FontIcon FontSize="13" Glyph="{x:Bind local:Ui.SeverityGlyph(Severity)}"
+                                                                              Foreground="{x:Bind local:Ui.SeverityBrush(Severity)}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                                                    <TextBlock Text="{x:Bind Message}" TextWrapping="Wrap" FontSize="13" />
+                                                                </StackPanel>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
                         </Grid>
                     </Border>
                 </Grid>

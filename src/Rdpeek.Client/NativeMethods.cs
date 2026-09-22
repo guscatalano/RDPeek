@@ -1,8 +1,8 @@
 using System.Runtime.InteropServices;
 
-namespace Rdpeek.Doctor;
+namespace Rdpeek.Client;
 
-internal enum Bitness { Unknown, X86, X64, Arm64 }
+public enum Bitness { Unknown, X86, X64, Arm64 }
 
 /// <summary>P/Invoke + PE helpers for the registration smoke tests.</summary>
 internal static class NativeMethods

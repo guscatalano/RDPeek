@@ -1,3 +1,4 @@
+using Rdpeek.Client;
 using Rdpeek.Doctor;
 
 // Standalone DVC plugin registration diagnostician. No RDP session required.
@@ -27,8 +28,7 @@ switch (args.Length > 0 ? args[0].ToLowerInvariant() : "")
         return ClientDiagnostics.ListenToBroker(seconds);
 }
 
-NativeMethods.CoInitializeEx(IntPtr.Zero, NativeMethods.COINIT_MULTITHREADED);
-try
+using var comScope = DoctorEngine.ComScope();
 {
     Console.WriteLine();
     Console.WriteLine("  DVC Doctor — RDP dynamic virtual channel plugin registration check");
@@ -77,10 +77,6 @@ try
     Console.WriteLine();
 
     return fails > 0 ? 1 : 0;
-}
-finally
-{
-    NativeMethods.CoUninitialize();
 }
 
 static void WriteSeverityTag(Severity s)

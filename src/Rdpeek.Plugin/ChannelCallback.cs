@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Dvc.Diag.Protocol;
@@ -61,6 +62,45 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
         {
             _ = RunListAsync(cmd.payload);
         }
+        else if (cmd.kind == "probe")
+        {
+            int n = int.TryParse(cmd.payload, out var c) ? Math.Clamp(c, 1, 200) : 20;
+            _ = RunProbeAsync(n);
+        }
+    }
+
+    /// <summary>Fire a burst of pings and report the latency distribution — an on-demand channel
+    /// health check, separate from the passive RTT the Link tab shows.</summary>
+    private async Task RunProbeAsync(int count)
+    {
+        var samples = new List<double>();
+        int lost = 0;
+        for (int i = 0; i < count && !_cts.IsCancellationRequested; i++)
+        {
+            long started = Stopwatch.GetTimestamp();
+            var reply = await RequestAsync(new Envelope { Ping = new Ping { SequenceNumber = (ulong)(i + 1) } });
+            if (reply?.BodyCase == Envelope.BodyOneofCase.Ping)
+                samples.Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            else
+                lost++;
+            try { await Task.Delay(100, _cts.Token); } catch { break; }
+        }
+
+        static string F(double d) => d.ToString("0.0", CultureInfo.InvariantCulture);
+        string payload;
+        if (samples.Count > 0)
+        {
+            double min = samples.Min(), max = samples.Max(), avg = samples.Average();
+            double jitter = samples.Count > 1
+                ? samples.Zip(samples.Skip(1), (a, b) => Math.Abs(b - a)).Average() : 0;
+            string list = string.Join(",", samples.Select(F));
+            payload = $"{count}\t{samples.Count}\t{lost}\t{F(min)}\t{F(avg)}\t{F(max)}\t{F(jitter)}\t{list}";
+        }
+        else
+        {
+            payload = $"{count}\t0\t{lost}\t0\t0\t0\t0\t";
+        }
+        Broker.Send(Broker.Format("probe", Environment.ProcessId, _seq, payload));
     }
 
     /// <summary>List a remote directory (FileListRequest) and report the entries to the companion.

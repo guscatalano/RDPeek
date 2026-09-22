@@ -50,6 +50,9 @@ public sealed class BrokerServer : IDisposable
     /// entries) or "filelisterror" (path + message).</summary>
     public event Action<string, string>? FileListUpdate;
 
+    /// <summary>Raised (background thread) with the result of a latency probe.</summary>
+    public event Action<string>? ProbeUpdate;
+
     public IReadOnlyList<AgentState> Snapshot() => _states.Values.ToList();
 
     /// <summary>Send a command line down to a connected plugin (companion → plugin). pid 0 broadcasts
@@ -125,6 +128,12 @@ public sealed class BrokerServer : IDisposable
                 if (kind is "filelist" or "filelisterror")
                 {
                     FileListUpdate?.Invoke(kind, payload);
+                    continue;
+                }
+
+                if (kind == "probe")
+                {
+                    ProbeUpdate?.Invoke(payload);
                     continue;
                 }
 

@@ -1,15 +1,15 @@
 using Microsoft.Win32;
 
-namespace Rdpeek.Doctor;
+namespace Rdpeek.Client;
 
-internal enum Severity { Pass, Info, Warn, Fail }
+public enum Severity { Pass, Info, Warn, Fail }
 
-internal enum Activation { Unknown, InprocServer32, LocalServer32, LoadLibrary }
+public enum Activation { Unknown, InprocServer32, LocalServer32, LoadLibrary }
 
-internal sealed record Finding(Severity Severity, string Message);
+public sealed record Finding(Severity Severity, string Message);
 
 /// <summary>One registered DVC plugin as found under a Terminal Server Client AddIns key.</summary>
-internal sealed class AddInEntry
+public sealed class AddInEntry
 {
     public required string Source { get; init; }     // e.g. "HKLM\64"
     public required RegistryHive Hive { get; init; }
@@ -29,8 +29,21 @@ internal sealed class AddInEntry
         Findings.Count == 0 ? Severity.Pass : Findings.Max(f => f.Severity);
 }
 
-internal static class DoctorEngine
+public static class DoctorEngine
 {
+    /// <summary>Initialise COM (MTA) for the activation smoke test; dispose to uninitialise. The
+    /// console Doctor and the WinUI companion both wrap Scan/Diagnose in this.</summary>
+    public static IDisposable ComScope()
+    {
+        NativeMethods.CoInitializeEx(IntPtr.Zero, NativeMethods.COINIT_MULTITHREADED);
+        return new ComUninit();
+    }
+
+    private sealed class ComUninit : IDisposable
+    {
+        public void Dispose() => NativeMethods.CoUninitialize();
+    }
+
     private const string AddInsPath =
         @"Software\Microsoft\Terminal Server Client\Default\AddIns";
 

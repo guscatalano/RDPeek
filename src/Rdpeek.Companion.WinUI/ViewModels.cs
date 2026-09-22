@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Security.Principal;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -32,6 +33,36 @@ internal static class UiBrushes
     public static readonly Brush Ok = new SolidColorBrush(Colors.MediumSeaGreen);
     public static readonly Brush Info = new SolidColorBrush(Colors.CornflowerBlue);
     public static readonly Brush Muted = new SolidColorBrush(Colors.Gray);
+    public static readonly Brush Warn = new SolidColorBrush(Colors.Goldenrod);
+    public static readonly Brush Fail = new SolidColorBrush(Colors.IndianRed);
+}
+
+/// <summary>x:Bind function helpers for severity → colour/glyph in the Diagnostics tab.</summary>
+public static class Ui
+{
+    public static Brush SeverityBrush(string severity) => severity switch
+    {
+        "Pass" => UiBrushes.Ok,
+        "Warn" => UiBrushes.Warn,
+        "Fail" => UiBrushes.Fail,
+        _ => UiBrushes.Muted,
+    };
+
+    public static string SeverityGlyph(string severity) => severity switch
+    {
+        "Pass" => "",   // check
+        "Warn" => "",   // warning
+        "Fail" => "",   // cancel
+        _ => "",        // info
+    };
+
+    public static string PluginDetail(string activation, string module, string bitness)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrEmpty(activation)) parts.Add(activation);
+        if (!string.IsNullOrEmpty(module)) parts.Add(module + (string.IsNullOrEmpty(bitness) ? "" : $" ({bitness})"));
+        return string.Join("    ·    ", parts);
+    }
 }
 
 public sealed record NetRow(string Proto, string Local, string Remote, string State, string Process)
@@ -77,6 +108,9 @@ public sealed record RemoteEntry(string Glyph, string Name, string Size, string 
 
 /// <summary>One clickable segment of the file browser's path.</summary>
 public sealed record BreadcrumbRow(string Name, string FullPath);
+
+/// <summary>One bar in the latency-probe mini chart (height in px).</summary>
+public sealed record ProbeBar(double Height);
 
 public partial class MainViewModel : ObservableObject
 {
@@ -144,6 +178,15 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<RemoteEntry> RemoteEntries { get; } = new();
     public ObservableCollection<BreadcrumbRow> Breadcrumbs { get; } = new();
 
+    // Diagnostics (Doctor in the UI) — plugin registration health.
+    [ObservableProperty] private string _diagnosticsSummary = "Checking plugin registration…";
+    public ObservableCollection<PluginReport> Diagnostics { get; } = new();
+
+    // Latency probe (on-demand ping burst on the diagnostics channel).
+    [ObservableProperty] private string _probeResult = "Run a burst of pings to measure this channel's latency.";
+    [ObservableProperty] private bool _probeRunning;
+    public ObservableCollection<ProbeBar> ProbeSamples { get; } = new();
+
     public MainViewModel(DispatcherQueue dispatcher)
     {
         _dispatcher = dispatcher;
@@ -151,6 +194,7 @@ public partial class MainViewModel : ObservableObject
         _broker.PullUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnPullUpdate(kind, payload));
         _broker.FrameUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnFrameUpdate(kind, payload));
         _broker.FileListUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnFileList(kind, payload));
+        _broker.ProbeUpdate += payload => _dispatcher.TryEnqueue(() => OnProbe(payload));
         _broker.Start();
 
         _timer = _dispatcher.CreateTimer();
@@ -159,6 +203,7 @@ public partial class MainViewModel : ObservableObject
         _timer.Start();
 
         Refresh();
+        _ = RunDiagnostics();   // plugin-registration health, in the background
     }
 
     partial void OnSelectedConnectionChanged(ConnectionRow? value) => UpdateDetails();
@@ -418,6 +463,106 @@ public partial class MainViewModel : ObservableObject
             (string.IsNullOrEmpty(value.Req) ? "" : $"   ·   req {value.Req}") +
             (value.Fields.Count == 0 ? "   —   no decoded body" : "");
         foreach (var f in value.Fields) SelectedFrameFields.Add(f);
+    }
+
+    [RelayCommand]
+    private void Probe()
+    {
+        var st = ConnectedAgent();
+        if (st is null) { ProbeResult = "No connected agent to probe."; return; }
+        ProbeSamples.Clear();
+        ProbeResult = "Probing…";
+        ProbeRunning = true;
+        if (!_broker.SendCommand(st.Pid, Broker.Format("probe", 0, 0, "20")))
+        { ProbeResult = "Couldn't reach the plugin."; ProbeRunning = false; }
+    }
+
+    private void OnProbe(string payload)
+    {
+        ProbeRunning = false;
+        var p = payload.Split('\t');
+        if (p.Length < 7) { ProbeResult = "Probe returned no data."; return; }
+
+        // count sent \t received \t lost \t min \t avg \t max \t jitter \t samples
+        ProbeResult = $"sent {p[0]}  ·  received {p[1]}  ·  lost {p[2]}  ·  " +
+                      $"min {p[3]}  ·  avg {p[4]}  ·  max {p[5]}  ·  jitter {p[6]} ms";
+
+        ProbeSamples.Clear();
+        if (p.Length >= 8 && p[7].Length > 0)
+        {
+            var vals = p[7].Split(',')
+                .Select(s => double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : 0)
+                .ToList();
+            double max = Math.Max(vals.DefaultIfEmpty(0).Max(), 0.001);
+            foreach (var v in vals) ProbeSamples.Add(new ProbeBar(Math.Max(2, v / max * 40)));
+        }
+    }
+
+    [RelayCommand]
+    private async Task RunDiagnostics()
+    {
+        DiagnosticsSummary = "Running registration checks…";
+        IReadOnlyList<PluginReport> reports;
+        try { reports = await Task.Run(PluginDoctor.Run); }
+        catch (Exception ex) { DiagnosticsSummary = $"Diagnostics failed: {ex.Message}"; return; }
+
+        Diagnostics.Clear();
+        foreach (var r in reports) Diagnostics.Add(r);
+
+        int fail = reports.Count(r => r.Worst == "Fail");
+        int warn = reports.Count(r => r.Worst == "Warn");
+        DiagnosticsSummary = reports.Count == 0
+            ? "No DVC plugins registered under Terminal Server Client\\AddIns (nothing to diagnose)."
+            : $"{reports.Count} plugin(s): {reports.Count - fail - warn} ok · {warn} warning(s) · {fail} failure(s).";
+    }
+
+    [RelayCommand]
+    private void ExportBundle()
+    {
+        try
+        {
+            var st = ConnectedAgent();
+            var s = st?.Sysinfo;
+            var bundle = new
+            {
+                generatedUtc = DateTime.UtcNow,
+                connection = ConnectionSummary,
+                host = s is null ? null : new
+                {
+                    s.HostName, s.OsProductName, s.OsDisplayVer, build = $"{s.OsBuild}.{s.OsUbr}",
+                    s.CpuName, s.CpuLogical, s.CpuPercent, s.MemTotalBytes, s.MemAvailBytes,
+                    s.UserName, s.SessionId, s.ClientName, s.Protocol, s.UptimeMs,
+                },
+                channels = Channels.Select(c => new { c.Name, c.Kind, c.Activation, c.Module, c.Clsid }),
+                dvcTraffic = DvcTraffic.Select(d => new { d.Name, d.Sent, d.Received, d.SendRate, d.RecvRate, d.Rtt }),
+                linkQuality = LinkQuality.Select(l => new { l.Name, l.Value, l.Instance }),
+                rtt = new { server = RttServer, client = RttClient, gap = RttGap, note = RttExplain },
+                clientMeasured = ClientMeasured,
+                diagnostics = Diagnostics.Select(r => new
+                {
+                    r.PluginKey, r.Source, r.Name, r.Activation, r.ModulePath, r.Bitness, r.Clsid, r.Worst,
+                    checks = r.Checks.Select(c => new { c.Severity, c.Message }),
+                }),
+                recentFrames = _allFrames.Select(f => new
+                {
+                    f.Time, f.Dir, f.Message, f.Size, f.Req, f.Note, fields = f.Fields.Select(x => x.Text),
+                }),
+            };
+
+            string json = System.Text.Json.JsonSerializer.Serialize(
+                bundle, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            string host = s?.HostName is { Length: > 0 } h ? h : "session";
+            string safe = new string(host.Select(ch => char.IsLetterOrDigit(ch) ? ch : '-').ToArray());
+            string file = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads",
+                $"rdpeek-bundle-{safe}-{DateTime.Now:yyyyMMdd-HHmmss}.json");
+            System.IO.File.WriteAllText(file, json);
+            Status = $"Support bundle written to {file}";
+        }
+        catch (Exception ex)
+        {
+            Status = $"Bundle export failed: {ex.Message}";
+        }
     }
 
     [RelayCommand]
