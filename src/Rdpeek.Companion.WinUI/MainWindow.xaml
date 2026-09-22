@@ -320,12 +320,28 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
                         <Grid>
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" /><RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <TextBlock Grid.Row="0" Margin="12,10,12,2" Opacity="0.8" TextWrapping="Wrap"
-                                       Text="Every [len][Envelope] frame on the diagnostics channel, tapped live as it crosses the plugin — newest on top. Like Wireshark scoped to this one channel: watch the request/response traffic and spot malformed frames (bad length prefixes, undecodable payloads, empty bodies, out-of-order request ids), highlighted in red." />
-                            <TextBlock Grid.Row="1" Margin="12,2,12,8" FontFamily="Consolas"
-                                       Text="{x:Bind Vm.FrameStats, Mode=OneWay}" />
+                            <TextBlock Grid.Row="0" Margin="12,10,12,4" Opacity="0.8" TextWrapping="Wrap"
+                                       Text="Every [len][Envelope] frame on the diagnostics channel, tapped live as it crosses the plugin — newest on top. Like Wireshark scoped to this one channel: filter the stream, then click a frame to decode its protobuf fields. Malformed frames are flagged in red." />
+
+                            <!-- filter bar -->
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="16" Margin="12,0,12,8" VerticalAlignment="Center">
+                                <muxc:RadioButtons SelectedItem="{x:Bind Vm.FrameFilterMode, Mode=TwoWay}" MaxColumns="4" VerticalAlignment="Center">
+                                    <x:String>All</x:String>
+                                    <x:String>In</x:String>
+                                    <x:String>Out</x:String>
+                                    <x:String>Anomalies</x:String>
+                                </muxc:RadioButtons>
+                                <ComboBox MinWidth="200" VerticalAlignment="Center" Header="Message type"
+                                          ItemsSource="{x:Bind Vm.FrameTypes}"
+                                          SelectedItem="{x:Bind Vm.FrameTypeFilter, Mode=TwoWay}" />
+                                <TextBlock VerticalAlignment="Bottom" Margin="0,0,0,6" FontFamily="Consolas" Opacity="0.75"
+                                           Text="{x:Bind Vm.FrameStats, Mode=OneWay}" />
+                            </StackPanel>
+
+                            <!-- master: the frame feed -->
                             <Grid Grid.Row="2" Padding="12,4" ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="0.14*" /><ColumnDefinition Width="0.09*" />
@@ -339,7 +355,8 @@
                                 <TextBlock Grid.Column="4" Text="Req" FontWeight="SemiBold" />
                                 <TextBlock Grid.Column="5" Text="Notes" FontWeight="SemiBold" />
                             </Grid>
-                            <ListView Grid.Row="2" Margin="0,32,0,0" ItemsSource="{x:Bind Vm.FrameFeed}" SelectionMode="None">
+                            <ListView Grid.Row="2" Margin="0,32,0,0" ItemsSource="{x:Bind Vm.FrameFeed}"
+                                      SelectionMode="Single" SelectedItem="{x:Bind Vm.SelectedFrame, Mode=TwoWay}">
                                 <ListView.ItemContainerStyle>
                                     <Style TargetType="ListViewItem">
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -365,6 +382,27 @@
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
                             </ListView>
+
+                            <!-- detail: decoded field tree of the selected frame -->
+                            <Border Grid.Row="3" Margin="12,6,12,12" Height="200" Padding="10" CornerRadius="6"
+                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                <Grid RowSpacing="6">
+                                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" FontWeight="SemiBold" TextWrapping="Wrap"
+                                               Text="{x:Bind Vm.FrameDetailHeader, Mode=OneWay}" />
+                                    <ScrollViewer Grid.Row="1">
+                                        <ItemsControl ItemsSource="{x:Bind Vm.SelectedFrameFields}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="local:FrameFieldRow">
+                                                    <TextBlock Text="{x:Bind Text}" Margin="{x:Bind IndentThickness}"
+                                                               FontFamily="Consolas" FontSize="12" TextWrapping="Wrap" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Grid>
+                            </Border>
                         </Grid>
                     </Border>
                 </Grid>

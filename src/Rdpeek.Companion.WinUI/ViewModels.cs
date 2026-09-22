@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Dvc.Diag.Protocol;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
 using Rdpeek.Client;
 using Windows.ApplicationModel.DataTransfer;
 
@@ -35,9 +36,17 @@ public sealed record DvcRow(string Name, string Sent, string Received, string Se
 /// <summary>One RemoteFX link/graphics counter, as Windows names it.</summary>
 public sealed record LinkRow(string Name, string Value, string Instance);
 
+/// <summary>One decoded field of a frame, flattened for the detail pane. Indent is the tree depth
+/// rendered as a left margin.</summary>
+public sealed record FrameFieldRow(string Text, double Indent)
+{
+    public Thickness IndentThickness => new(Indent, 1, 0, 1);
+}
+
 /// <summary>One frame the inspector tapped on the channel, for the live Frames feed. Note carries
-/// any anomaly text; IsAnomaly flags the row for highlighting.</summary>
-public sealed record FrameRow(string Time, string Dir, string Message, string Size, string Req, string Note, bool IsAnomaly);
+/// any anomaly text; IsAnomaly flags the row for highlighting; Fields is the decoded field tree.</summary>
+public sealed record FrameRow(long Seq, string Time, string Dir, string Message, string Size, string Req,
+    string Note, bool IsAnomaly, IReadOnlyList<FrameFieldRow> Fields);
 
 /// <summary>An entry in the remote file browser.</summary>
 public sealed record RemoteEntry(string Glyph, string Name, string Size, bool IsDir, string FullPath);
@@ -74,9 +83,18 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private double _pullProgress;      // 0..100
     [ObservableProperty] private string _pullStatus = "Pull a file from the remote session onto this machine.";
 
-    // Frame inspector.
+    // Frame inspector — live feed with filtering and a click-to-decode detail pane.
+    private const string AllTypes = "(all types)";
+    private long _frameSeq;
+    private readonly List<FrameRow> _allFrames = new();     // backing store (newest first, capped)
     [ObservableProperty] private string _frameStats = "No frames tapped yet — connect an agent.";
-    public ObservableCollection<FrameRow> FrameFeed { get; } = new();
+    [ObservableProperty] private string _frameFilterMode = "All";     // All / In / Out / Anomalies
+    [ObservableProperty] private string _frameTypeFilter = AllTypes;
+    [ObservableProperty] private FrameRow? _selectedFrame;
+    [ObservableProperty] private string _frameDetailHeader = "Select a frame to see its decoded fields.";
+    public ObservableCollection<FrameRow> FrameFeed { get; } = new();          // filtered, visible
+    public ObservableCollection<string> FrameTypes { get; } = new() { AllTypes };
+    public ObservableCollection<FrameFieldRow> SelectedFrameFields { get; } = new();
 
     // Remote file browser.
     [ObservableProperty] private string _currentRemotePath = "";
@@ -226,17 +244,86 @@ public partial class MainViewModel : ObservableObject
         }
         else if (kind == "frame" && p.Length >= 6)
         {
-            // direction \t bodyCase \t size \t requestId \t decoded(0/1) \t anomalies
+            // direction \t bodyCase \t size \t requestId \t decoded(0/1) \t anomalies \t fields
             bool decoded = p[4] == "1";
             bool anom = p[5].Length > 0;
             string dir = p[0] == "in" ? "↓ in" : "↑ out";
             string size = long.TryParse(p[2], out var sz) ? Bytes((ulong)sz) : p[2];
             string req = p[3] == "0" ? "" : p[3];
             string note = anom ? "⚠ " + p[5] : (decoded ? "" : "undecodable");
-            FrameFeed.Insert(0, new FrameRow(DateTime.Now.ToString("HH:mm:ss.fff"), dir,
-                p[1], size, req, note, anom || !decoded));
-            while (FrameFeed.Count > 300) FrameFeed.RemoveAt(FrameFeed.Count - 1);
+            var fields = ParseFields(p.Length >= 7 ? p[6] : "");
+            AddFrame(new FrameRow(++_frameSeq, DateTime.Now.ToString("HH:mm:ss.fff"), dir,
+                p[1], size, req, note, anom || !decoded, fields));
         }
+    }
+
+    private static IReadOnlyList<FrameFieldRow> ParseFields(string blob)
+    {
+        if (blob.Length == 0) return Array.Empty<FrameFieldRow>();
+        var rows = new List<FrameFieldRow>();
+        foreach (var rec in blob.Split('\x1e'))
+        {
+            var f = rec.Split('\x1f');
+            if (f.Length < 3) continue;
+            int depth = int.TryParse(f[0], out var d) ? d : 0;
+            string text = f[2].Length > 0 ? $"{f[1]}: {f[2]}" : f[1];
+            rows.Add(new FrameFieldRow(text, 4 + depth * 16));
+        }
+        return rows;
+    }
+
+    private void AddFrame(FrameRow row)
+    {
+        _allFrames.Insert(0, row);
+        if (!FrameTypes.Contains(row.Message))
+        {
+            // Keep "(all types)" first, the rest sorted.
+            int i = 1;
+            while (i < FrameTypes.Count && string.CompareOrdinal(FrameTypes[i], row.Message) < 0) i++;
+            FrameTypes.Insert(i, row.Message);
+        }
+        if (FramePasses(row)) FrameFeed.Insert(0, row);
+
+        while (_allFrames.Count > 300)
+        {
+            var old = _allFrames[^1];
+            _allFrames.RemoveAt(_allFrames.Count - 1);
+            FrameFeed.Remove(old);   // FrameRow.Seq makes each row value-unique
+        }
+    }
+
+    private bool FramePasses(FrameRow r) =>
+        (FrameFilterMode switch
+        {
+            "In" => r.Dir.Contains("in"),
+            "Out" => r.Dir.Contains("out"),
+            "Anomalies" => r.IsAnomaly,
+            _ => true,
+        })
+        && (FrameTypeFilter == AllTypes || r.Message == FrameTypeFilter);
+
+    partial void OnFrameFilterModeChanged(string value) => RebuildFrameFeed();
+    partial void OnFrameTypeFilterChanged(string value) => RebuildFrameFeed();
+
+    private void RebuildFrameFeed()
+    {
+        FrameFeed.Clear();
+        foreach (var r in _allFrames)   // already newest-first
+            if (FramePasses(r)) FrameFeed.Add(r);
+    }
+
+    partial void OnSelectedFrameChanged(FrameRow? value)
+    {
+        SelectedFrameFields.Clear();
+        if (value is null)
+        {
+            FrameDetailHeader = "Select a frame to see its decoded fields.";
+            return;
+        }
+        FrameDetailHeader = $"{value.Dir}   ·   {value.Message}   ·   {value.Size}" +
+            (string.IsNullOrEmpty(value.Req) ? "" : $"   ·   req {value.Req}") +
+            (value.Fields.Count == 0 ? "   —   no decoded body" : "");
+        foreach (var f in value.Fields) SelectedFrameFields.Add(f);
     }
 
     [RelayCommand]

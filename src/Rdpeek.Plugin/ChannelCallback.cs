@@ -169,14 +169,35 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
                 bool anomalous = r.Anomalies.Count > 0;
                 if (anomalous) Interlocked.Increment(ref _frameAnomalies);
 
-                // frame = direction \t bodyCase \t size \t requestId \t decoded(0/1) \t anomalies
+                // frame = direction \t bodyCase \t size \t requestId \t decoded(0/1) \t anomalies \t fields
+                // fields = depth \x1f name \x1f value, records joined by \x1e (the decoded field tree,
+                // flattened depth-first, for the companion's click-to-decode detail pane).
                 if (anomalous || FeedAllow())
+                {
+                    var fb = new System.Text.StringBuilder();
+                    FlattenFields(r.Fields, 0, fb);
                     Broker.Send(Broker.Format("frame", Environment.ProcessId, _seq,
-                        $"{r.Direction}\t{r.BodyCase}\t{r.SizeBytes}\t{r.RequestId}\t{(r.Decoded ? 1 : 0)}\t{string.Join("; ", r.Anomalies)}"));
+                        $"{r.Direction}\t{r.BodyCase}\t{r.SizeBytes}\t{r.RequestId}\t{(r.Decoded ? 1 : 0)}\t{string.Join("; ", r.Anomalies)}\t{fb}"));
+                }
             }
         }
         catch { /* a diagnostic tap must never disturb the channel */ }
     }
+
+    private static void FlattenFields(IReadOnlyList<FrameField> fields, int depth, System.Text.StringBuilder sb)
+    {
+        foreach (var f in fields)
+        {
+            if (sb.Length > 0) sb.Append('\x1e');
+            sb.Append(depth).Append('\x1f').Append(Clean(f.Name)).Append('\x1f').Append(Clean(f.Value));
+            if (f.Children.Count > 0) FlattenFields(f.Children, depth + 1, sb);
+        }
+    }
+
+    // The broker line is newline-terminated and the feed uses \t/\x1e/\x1f as separators, so a field
+    // name or value must not contain any of them.
+    private static string Clean(string s) =>
+        s.Replace('\t', ' ').Replace('\n', ' ').Replace('\r', ' ').Replace('\x1e', ' ').Replace('\x1f', ' ');
 
     private void WriteEnvelope(Envelope env)
     {
