@@ -32,7 +32,7 @@ switch (command)
     case "serve-tcp":
         // Serves the same AgentCore over a TCP socket, so a mock RDP server can bridge its
         // diagnostics DVC to it and drive the real agent. `serve-tcp <port>` (default 9999).
-        return ServeTcp.Run(ParsePort(args, 9999), ParseFileRoots(args), args.Contains("--fake"));
+        return ServeTcp.Run(ParsePort(args, 9999), ParseFileRoots(args), args.Contains("--fake"), ParseOption(args, "--fake-host"));
 
     case "dvcwatch":
         // Standalone per-DVC traffic monitor — the RDP_DVC_Watcher tool this grew from,
@@ -57,6 +57,13 @@ static int ParsePort(string[] args, int fallback)
 
 // File-PULL roots from --file-root <path> (repeatable). Default: the session's %TEMP%, where logs
 // and crash dumps usually land — a useful, bounded default for a dev diagnostics agent.
+static string? ParseOption(string[] args, string name)
+{
+    for (int i = 0; i < args.Length - 1; i++)
+        if (args[i].Equals(name, StringComparison.OrdinalIgnoreCase)) return args[i + 1];
+    return null;
+}
+
 static IReadOnlyList<string> ParseFileRoots(string[] args)
 {
     var roots = new List<string>();

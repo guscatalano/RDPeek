@@ -9,19 +9,50 @@ namespace Rdpeek.Agent;
 /// </summary>
 internal sealed class FakeAgentData : IAgentData
 {
+    private readonly string _host;
+    private readonly Persona _p;
+
+    /// <summary>
+    /// <paramref name="host"/> becomes the reported HostName (so a viewer can correlate this agent to
+    /// the RDP window that reached it), and also seeds a "persona" — a different OS/CPU/load — so that
+    /// simulating several connections shows visibly distinct hosts, not the same server N times.
+    /// </summary>
+    public FakeAgentData(string? host = null)
+    {
+        _host = string.IsNullOrWhiteSpace(host) ? "DEMO-SRV01" : host;
+        var lastNum = new string(_host.Split('.', '-', '_').LastOrDefault(s => s.Any(char.IsDigit))?
+            .Where(char.IsDigit).ToArray() ?? Array.Empty<char>());
+        int seed = int.TryParse(lastNum, out var v) ? v : _host.Sum(c => c);
+        _p = Personas[Math.Abs(seed) % Personas.Length];
+    }
+
+    private sealed record Persona(
+        string Os, string Edition, string DisplayVer, uint Build, uint Ubr,
+        string Cpu, uint CpuLogical, double CpuPct, ulong MemGb, ulong MemFreeGb);
+
+    private static readonly Persona[] Personas =
+    {
+        new("Windows Server 2022 Datacenter", "ServerDatacenter", "21H2", 20348, 2340,
+            "Intel(R) Xeon(R) Gold 6338 CPU @ 2.00GHz", 16, 23.7, 64, 41),
+        new("Windows Server 2019 Standard", "ServerStandard", "1809", 17763, 5830,
+            "AMD EPYC 7402P 24-Core Processor", 24, 61.2, 128, 33),
+        new("Windows 11 Enterprise", "Enterprise", "23H2", 22631, 4169,
+            "Intel(R) Core(TM) i7-1370P", 20, 8.9, 32, 19),
+    };
+
     public SysInfoSnapshot SysInfo() => new()
     {
-        HostName = "DEMO-SRV01",
-        OsProductName = "Windows Server 2022 Datacenter",
-        OsDisplayVer = "21H2",
-        OsBuild = 20348,
-        OsUbr = 2340,
+        HostName = _host,
+        OsProductName = _p.Os,
+        OsDisplayVer = _p.DisplayVer,
+        OsBuild = _p.Build,
+        OsUbr = _p.Ubr,
         UptimeMs = 9L * 24 * 3600 * 1000 + 4 * 3600 * 1000,   // ~9.2 days
-        CpuName = "Intel(R) Xeon(R) Gold 6338 CPU @ 2.00GHz",
-        CpuLogical = 16,
-        CpuPercent = 23.7,
-        MemTotalBytes = 64UL * 1024 * 1024 * 1024,
-        MemAvailBytes = 41UL * 1024 * 1024 * 1024,
+        CpuName = _p.Cpu,
+        CpuLogical = _p.CpuLogical,
+        CpuPercent = _p.CpuPct,
+        MemTotalBytes = _p.MemGb * 1024 * 1024 * 1024,
+        MemAvailBytes = _p.MemFreeGb * 1024 * 1024 * 1024,
         UserName = "CONTOSO\\svc-app",
         SessionId = 2,
         ClientName = "RDPEEK-DEMO",
@@ -89,8 +120,8 @@ internal sealed class FakeAgentData : IAgentData
         var snap = new PerfSnapshot();
         void C(string name, double value, string unit) =>
             snap.Counters.Add(new PerfSnapshot.Types.Counter { Name = name, Value = value, Unit = unit, Group = "host" });
-        C("Processor Time", 23.7, "%");
-        C("Available Memory", 41984, "MB");
+        C("Processor Time", _p.CpuPct, "%");
+        C("Available Memory", _p.MemFreeGb * 1024, "MB");
         C("Disk Queue Length", 0.03, "");
         C("Processes", 148, "");
 
