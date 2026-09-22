@@ -9,6 +9,7 @@
     <Grid Padding="16" RowSpacing="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -20,21 +21,35 @@
             <Button Content="Refresh" Command="{x:Bind Vm.RefreshCommand}" VerticalAlignment="Center" />
         </StackPanel>
 
-        <muxc:NavigationView Grid.Row="1"
-                             PaneDisplayMode="Top"
+        <!-- persistent connection / liveness bar (applies to whichever tab is open) -->
+        <Border Grid.Row="1" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12,8">
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <Ellipse Width="10" Height="10" VerticalAlignment="Center" Fill="{x:Bind Vm.LivenessBrush, Mode=OneWay}" />
+                <TextBlock Text="{x:Bind Vm.ConnectionSummary, Mode=OneWay}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="{x:Bind Vm.Freshness, Mode=OneWay}" Opacity="0.55" VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <muxc:NavigationView Grid.Row="2"
+                             PaneDisplayMode="Left"
+                             OpenPaneLength="190"
                              IsBackButtonVisible="Collapsed"
+                             IsPaneToggleButtonVisible="False"
                              IsSettingsVisible="False"
                              SelectionChanged="OnNavChanged">
             <muxc:NavigationView.MenuItems>
-                <muxc:NavigationViewItem Content="Dashboard" Tag="dash" IsSelected="True" />
+                <muxc:NavigationViewItemHeader Content="DVC workbench" />
+                <muxc:NavigationViewItem Content="Overview" Tag="dash" IsSelected="True" />
+                <muxc:NavigationViewItem Content="Channels" Tag="chan" />
+                <muxc:NavigationViewItem Content="DVC traffic" Tag="dvc" />
+                <muxc:NavigationViewItem Content="Frames" Tag="frames" />
+                <muxc:NavigationViewItem Content="Files" Tag="files" />
+                <muxc:NavigationViewItemHeader Content="Host (via agent)" />
                 <muxc:NavigationViewItem Content="Network" Tag="net" />
                 <muxc:NavigationViewItem Content="Sessions" Tag="sess" />
                 <muxc:NavigationViewItem Content="Services" Tag="svc" />
-                <muxc:NavigationViewItem Content="Channels" Tag="chan" />
-                <muxc:NavigationViewItem Content="DVC traffic" Tag="dvc" />
                 <muxc:NavigationViewItem Content="Link" Tag="link" />
-                <muxc:NavigationViewItem Content="Files" Tag="files" />
-                <muxc:NavigationViewItem Content="Frames" Tag="frames" />
             </muxc:NavigationView.MenuItems>
 
             <Grid Margin="0,12,0,0">
@@ -606,6 +621,6 @@
             </Grid>
         </muxc:NavigationView>
 
-        <TextBlock Grid.Row="2" Text="{x:Bind Vm.Status, Mode=OneWay}" Opacity="0.9" />
+        <TextBlock Grid.Row="3" Text="{x:Bind Vm.Status, Mode=OneWay}" Opacity="0.9" />
     </Grid>
 </Window>

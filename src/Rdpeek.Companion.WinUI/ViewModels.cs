@@ -3,8 +3,10 @@ using System.Security.Principal;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Dvc.Diag.Protocol;
+using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using Rdpeek.Client;
 using Windows.ApplicationModel.DataTransfer;
 
@@ -69,6 +71,14 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<DvcRow> DvcTraffic { get; } = new();
     public ObservableCollection<LinkRow> LinkQuality { get; } = new();
 
+    // Persistent connection/status bar (shown above every tab).
+    private DateTime? _lastAgentUpdate;
+    private static readonly Brush LiveBrush = new SolidColorBrush(Colors.LimeGreen);
+    private static readonly Brush StaleBrush = new SolidColorBrush(Colors.Gray);
+    [ObservableProperty] private string _connectionSummary = "No agent connected.";
+    [ObservableProperty] private string _freshness = "";
+    [ObservableProperty] private Brush _livenessBrush = StaleBrush;
+
     [ObservableProperty] private ConnectionRow? _selectedConnection;
     [ObservableProperty] private string _hostHeader = "Connect an RDP session to see host details.";
     [ObservableProperty] private string _perfText = "";
@@ -104,7 +114,7 @@ public partial class MainViewModel : ObservableObject
     public MainViewModel(DispatcherQueue dispatcher)
     {
         _dispatcher = dispatcher;
-        _broker.Changed += () => _dispatcher.TryEnqueue(Refresh);
+        _broker.Changed += () => _dispatcher.TryEnqueue(() => { _lastAgentUpdate = DateTime.UtcNow; Refresh(); });
         _broker.PullUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnPullUpdate(kind, payload));
         _broker.FrameUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnFrameUpdate(kind, payload));
         _broker.FileListUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnFileList(kind, payload));
@@ -362,6 +372,31 @@ public partial class MainViewModel : ObservableObject
         UpdateDetails();
         UpdateChannels();
         UpdateStatus(windows.Count, states);
+        UpdateConnectionBar();
+    }
+
+    private void UpdateConnectionBar()
+    {
+        var st = SelectedConnection?.State
+                 ?? Connections.Select(c => c.State).FirstOrDefault(s => s?.Status == "connected");
+        bool connected = st?.Status == "connected";
+        string host = !string.IsNullOrEmpty(st?.Host) ? st!.Host : (st?.Sysinfo?.HostName ?? "");
+
+        ConnectionSummary = connected
+            ? $"{(string.IsNullOrEmpty(host) ? "agent" : host)}   ·   ✓ agent connected"
+            : Connections.Count == 0 ? "No RDP connection." : "⚠ No agent in this session.";
+
+        if (connected && _lastAgentUpdate is { } t)
+        {
+            int secs = (int)Math.Max(0, (DateTime.UtcNow - t).TotalSeconds);
+            Freshness = secs <= 1 ? "updated just now" : $"updated {secs}s ago";
+            LivenessBrush = secs < 6 ? LiveBrush : StaleBrush;
+        }
+        else
+        {
+            Freshness = "";
+            LivenessBrush = StaleBrush;
+        }
     }
 
     private static BrokerServer.AgentState? Correlate(RdpWindow w, int windowCount, IReadOnlyList<BrokerServer.AgentState> states, out string agentText)
