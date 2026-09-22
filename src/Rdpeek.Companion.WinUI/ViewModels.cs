@@ -21,6 +21,12 @@ public partial class ConnectionRow : ObservableObject
     [ObservableProperty] private string _host = "";
     [ObservableProperty] private string _agent = "—";
     [ObservableProperty] private string _window = "";
+    // Live at-a-glance metrics + health, so every connection is legible without selecting it.
+    [ObservableProperty] private string _cpu = "";
+    [ObservableProperty] private string _rtt = "";
+    [ObservableProperty] private string _throughput = "";
+    [ObservableProperty] private string _healthText = "";
+    [ObservableProperty] private Brush _healthBrush = UiBrushes.Muted;
     public BrokerServer.AgentState? State { get; set; }
 }
 
@@ -694,6 +700,7 @@ public partial class MainViewModel : ObservableObject
             row.Window = w.Title;
             row.State = Correlate(w, windows.Count, states, out string agentText);
             row.Agent = agentText;
+            UpdateRowMetrics(row);
         }
         for (int i = Connections.Count - 1; i >= 0; i--)
             if (!seen.Contains(Connections[i].Hwnd)) Connections.RemoveAt(i);
@@ -729,6 +736,32 @@ public partial class MainViewModel : ObservableObject
             Freshness = "";
             LivenessBrush = StaleBrush;
         }
+    }
+
+    /// <summary>Live metrics + a health rollup for one connection row, so the whole fleet is legible
+    /// at a glance on the dashboard without selecting each one.</summary>
+    private static void UpdateRowMetrics(ConnectionRow row)
+    {
+        var s = row.State;
+        row.Cpu = s?.Sysinfo is { } si ? $"{si.CpuPercent:0}%" : "";
+        row.Rtt = s?.Link is { RttMsLast: > 0 } lk ? $"{lk.RttMsLast:0.0} ms" : "";
+        row.Throughput = s?.Counters is { } co ? Rate(co.Channels.Sum(c => c.SendRateBps + c.RecvRateBps)) : "";
+
+        if (s is null || s.Status != "connected")
+        {
+            row.HealthBrush = UiBrushes.Muted;
+            row.HealthText = "no agent";
+            return;
+        }
+
+        var problems = new List<string>();
+        if (s.Link is { PingTimeouts: > 0 } l) problems.Add($"{l.PingTimeouts}/{l.Pings} pings lost");
+        int badDev = s.System?.Devices.Count(d => d.Problem.Length > 0) ?? 0;
+        if (badDev > 0) problems.Add($"{badDev} device problem{(badDev > 1 ? "s" : "")}");
+        if (s.Sysinfo is { CpuPercent: >= 90 }) problems.Add("CPU pegged");
+
+        row.HealthBrush = problems.Count == 0 ? UiBrushes.Ok : UiBrushes.Warn;
+        row.HealthText = problems.Count == 0 ? "healthy" : string.Join(" · ", problems);
     }
 
     private static BrokerServer.AgentState? Correlate(RdpWindow w, int windowCount, IReadOnlyList<BrokerServer.AgentState> states, out string agentText)

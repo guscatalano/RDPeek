@@ -76,13 +76,16 @@
                             </Grid.RowDefinitions>
                             <Grid Grid.Row="0" Padding="12,8" ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="0.28*" />
-                                    <ColumnDefinition Width="0.30*" />
-                                    <ColumnDefinition Width="0.42*" />
+                                    <ColumnDefinition Width="20" />
+                                    <ColumnDefinition Width="0.26*" /><ColumnDefinition Width="0.10*" />
+                                    <ColumnDefinition Width="0.12*" /><ColumnDefinition Width="0.14*" />
+                                    <ColumnDefinition Width="0.38*" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Host" FontWeight="SemiBold" />
-                                <TextBlock Grid.Column="1" Text="Agent" FontWeight="SemiBold" />
-                                <TextBlock Grid.Column="2" Text="Window" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="1" Text="Host" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="2" Text="CPU" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="3" Text="RTT" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="4" Text="Rate" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="5" Text="Window" FontWeight="SemiBold" />
                             </Grid>
                             <ListView Grid.Row="1" ItemsSource="{x:Bind Vm.Connections}"
                                       SelectedItem="{x:Bind Vm.SelectedConnection, Mode=TwoWay}"
@@ -98,13 +101,19 @@
                                     <DataTemplate x:DataType="local:ConnectionRow">
                                         <Grid ColumnSpacing="8">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="0.28*" />
-                                                <ColumnDefinition Width="0.30*" />
-                                                <ColumnDefinition Width="0.42*" />
+                                                <ColumnDefinition Width="20" />
+                                                <ColumnDefinition Width="0.26*" /><ColumnDefinition Width="0.10*" />
+                                                <ColumnDefinition Width="0.12*" /><ColumnDefinition Width="0.14*" />
+                                                <ColumnDefinition Width="0.38*" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="{x:Bind Host, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Grid.Column="1" Text="{x:Bind Agent, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Grid.Column="2" Text="{x:Bind Window, Mode=OneWay}" TextTrimming="CharacterEllipsis" Opacity="0.8" />
+                                            <Ellipse Grid.Column="0" Width="10" Height="10" VerticalAlignment="Center"
+                                                     Fill="{x:Bind HealthBrush, Mode=OneWay}"
+                                                     ToolTipService.ToolTip="{x:Bind HealthText, Mode=OneWay}" />
+                                            <TextBlock Grid.Column="1" Text="{x:Bind Host, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="2" Text="{x:Bind Cpu, Mode=OneWay}" FontFamily="Consolas" />
+                                            <TextBlock Grid.Column="3" Text="{x:Bind Rtt, Mode=OneWay}" FontFamily="Consolas" Opacity="0.85" />
+                                            <TextBlock Grid.Column="4" Text="{x:Bind Throughput, Mode=OneWay}" FontFamily="Consolas" Opacity="0.85" />
+                                            <TextBlock Grid.Column="5" Text="{x:Bind Window, Mode=OneWay}" TextTrimming="CharacterEllipsis" Opacity="0.7" />
                                         </Grid>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
