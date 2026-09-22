@@ -44,8 +44,9 @@ public sealed class BrokerServer : IDisposable
     public event Action<string, string>? PullUpdate;
 
     /// <summary>Raised (background thread) for frame-inspector updates: kind is "framestats" or
-    /// "frameanomaly", payload is the tab-separated detail.</summary>
-    public event Action<string, string>? FrameUpdate;
+    /// "frame". pid/seq identify which connection produced it, so a multi-connection viewer can
+    /// show only the selected one's frames.</summary>
+    public event Action<int, int, string, string>? FrameUpdate;
 
     /// <summary>Raised (background thread) for a remote directory listing: kind is "filelist" (path +
     /// entries) or "filelisterror" (path + message).</summary>
@@ -122,7 +123,7 @@ public sealed class BrokerServer : IDisposable
 
                 if (kind is "framestats" or "frame")
                 {
-                    FrameUpdate?.Invoke(kind, payload);
+                    FrameUpdate?.Invoke(pid, seq, kind, payload);
                     continue;
                 }
 

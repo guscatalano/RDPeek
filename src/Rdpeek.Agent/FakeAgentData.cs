@@ -28,16 +28,17 @@ internal sealed class FakeAgentData : IAgentData
 
     private sealed record Persona(
         string Os, string Edition, string DisplayVer, uint Build, uint Ubr,
-        string Cpu, uint CpuLogical, double CpuPct, ulong MemGb, ulong MemFreeGb);
+        string Cpu, uint CpuLogical, double CpuPct, ulong MemGb, ulong MemFreeGb,
+        double Load);   // relative channel busyness — scales traffic, rates and RTT so hosts differ
 
     private static readonly Persona[] Personas =
     {
         new("Windows Server 2022 Datacenter", "ServerDatacenter", "21H2", 20348, 2340,
-            "Intel(R) Xeon(R) Gold 6338 CPU @ 2.00GHz", 16, 23.7, 64, 41),
+            "Intel(R) Xeon(R) Gold 6338 CPU @ 2.00GHz", 16, 23.7, 64, 41, 1.6),
         new("Windows Server 2019 Standard", "ServerStandard", "1809", 17763, 5830,
-            "AMD EPYC 7402P 24-Core Processor", 24, 61.2, 128, 33),
+            "AMD EPYC 7402P 24-Core Processor", 24, 61.2, 128, 33, 2.7),
         new("Windows 11 Enterprise", "Enterprise", "23H2", 22631, 4169,
-            "Intel(R) Core(TM) i7-1370P", 20, 8.9, 32, 19),
+            "Intel(R) Core(TM) i7-1370P", 20, 8.9, 32, 19, 0.5),
     };
 
     public SysInfoSnapshot SysInfo() => new()
@@ -133,18 +134,19 @@ internal sealed class FakeAgentData : IAgentData
             snap.Counters.Add(new PerfSnapshot.Types.Counter { Name = name, Value = value, Group = "link", Instance = inst });
         void G(string name, double value) =>
             snap.Counters.Add(new PerfSnapshot.Types.Counter { Name = name, Value = value, Group = "graphics", Instance = inst });
-        L("Current TCP RTT", J(28, 0.4));
-        L("Base TCP RTT", 24);
+        double load = _p.Load;
+        L("Current TCP RTT", J(20 * load, 0.4));
+        L("Base TCP RTT", Math.Round(18 * load, 2));
         L("Current TCP Bandwidth", J(48_000_000, 0.1));
-        L("Total Sent Rate", J(3_500_000, 0.3));
-        L("Total Received Rate", J(180_000, 0.3));
-        L("Loss Rate", J(0.1, 1.0));
-        L("Retransmission Rate", J(0.2, 1.0));
-        G("Frame Quality", J(92, 0.06));
-        G("Average Encoding Time", J(6, 0.4));
+        L("Total Sent Rate", J(3_500_000 * load, 0.3));
+        L("Total Received Rate", J(180_000 * load, 0.3));
+        L("Loss Rate", J(0.1 * load, 1.0));
+        L("Retransmission Rate", J(0.2 * load, 1.0));
+        G("Frame Quality", J(96 - 6 * load, 0.06));
+        G("Average Encoding Time", J(4 * load, 0.4));
         G("Input Frames/Second", J(30, 0.2));
-        G("Output Frames/Second", J(28, 0.2));
-        G("Frames Skipped/Second - Insufficient Network Resources", J(0.5, 1.0));
+        G("Output Frames/Second", J(30 - 4 * load, 0.2));
+        G("Frames Skipped/Second - Insufficient Network Resources", J(0.3 * load, 1.0));
         G("Graphics Compression ratio", J(12, 0.2));
         return snap;
     }
@@ -201,14 +203,16 @@ internal sealed class FakeAgentData : IAgentData
         void Ch(string name, ulong baseSent, ulong baseRecv, double sendRate, double recvRate, double rtt)
         {
             double j = 0.85 + _rng.NextDouble() * 0.30;
+            double load = _p.Load;
+            sendRate *= load; recvRate *= load;
             s.Channels.Add(new CounterSample.Types.ChannelCounters
             {
                 Name = name,
-                BytesSent = baseSent + (ulong)(_tick * sendRate * 3),      // ~3s per poll
-                BytesReceived = baseRecv + (ulong)(_tick * recvRate * 3),
+                BytesSent = (ulong)(baseSent * load) + (ulong)(_tick * sendRate),
+                BytesReceived = (ulong)(baseRecv * load) + (ulong)(_tick * recvRate),
                 SendRateBps = sendRate * j,
                 RecvRateBps = recvRate * j,
-                RttMs = rtt > 0 ? rtt * j : 0,
+                RttMs = rtt > 0 ? rtt * load * j : 0,
             });
         }
         Ch("graphics", 120_000_000, 40_000, 3_500_000, 800, 0);

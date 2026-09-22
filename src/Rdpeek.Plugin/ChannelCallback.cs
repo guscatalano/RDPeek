@@ -53,6 +53,9 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
     private void OnCommand(string line)
     {
         if (Broker.Parse(line) is not { } cmd) return;
+        // One plugin process can host several channels (one per RDP connection); a command
+        // carries the target seq so only the addressed channel acts on it. seq 0 = broadcast.
+        if (cmd.seq != 0 && cmd.seq != _seq) return;
         if (cmd.kind == "pull")
         {
             var parts = cmd.payload.Split('\t');

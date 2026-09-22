@@ -220,7 +220,7 @@ public partial class MainViewModel : ObservableObject
         _dispatcher = dispatcher;
         _broker.Changed += () => _dispatcher.TryEnqueue(() => { _lastAgentUpdate = DateTime.UtcNow; Refresh(); });
         _broker.PullUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnPullUpdate(kind, payload));
-        _broker.FrameUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnFrameUpdate(kind, payload));
+        _broker.FrameUpdate += (pid, seq, kind, payload) => _dispatcher.TryEnqueue(() => OnFrameUpdate(pid, seq, kind, payload));
         _broker.FileListUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnFileList(kind, payload));
         _broker.ProbeUpdate += payload => _dispatcher.TryEnqueue(() => OnProbe(payload));
         _broker.Start();
@@ -234,7 +234,23 @@ public partial class MainViewModel : ObservableObject
         _ = RunDiagnostics();   // plugin-registration health, in the background
     }
 
-    partial void OnSelectedConnectionChanged(ConnectionRow? value) => UpdateDetails();
+    partial void OnSelectedConnectionChanged(ConnectionRow? value)
+    {
+        UpdateDetails();
+        // Frames, the probe and the file browser are per-connection and can't be replayed, so reset
+        // them for the newly-selected host instead of showing the previous one's data.
+        _allFrames.Clear();
+        FrameFeed.Clear();
+        FrameTypes.Clear();
+        FrameTypes.Add(AllTypes);
+        SelectedFrame = null;
+        FrameStats = "No frames tapped yet for this connection.";
+        ProbeSamples.Clear();
+        ProbeResult = "Run a burst of pings to measure this channel's latency.";
+        RemoteEntries.Clear();
+        Breadcrumbs.Clear();
+        CurrentRemotePath = "";
+    }
 
     partial void OnRemotePathChanged(string value)
     {
@@ -257,7 +273,7 @@ public partial class MainViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(RemotePath) || string.IsNullOrWhiteSpace(LocalDest))
         { PullStatus = "Enter a remote path and a local destination."; return; }
 
-        if (_broker.SendCommand(st.Pid, Broker.Format("pull", 0, 0, $"{RemotePath}\t{LocalDest}")))
+        if (_broker.SendCommand(st.Pid, Broker.Format("pull", st.Pid, st.Seq, $"{RemotePath}\t{LocalDest}")))
         {
             PullProgress = 0;
             PullStatus = $"Pulling {RemotePath} …";
@@ -340,7 +356,7 @@ public partial class MainViewModel : ObservableObject
         var st = ConnectedAgent();
         if (st is null) { PullStatus = "No connected agent to browse."; return; }
         BrowserLoading = true;
-        SendList(st.Pid, "");   // empty path → the agent's first file root
+        SendList(st, "");   // empty path → the agent's first file root
     }
 
     [RelayCommand]
@@ -349,7 +365,7 @@ public partial class MainViewModel : ObservableObject
         if (entry is null) return;
         var st = ConnectedAgent();
         if (st is null) return;
-        if (entry.IsDir) { BrowserLoading = true; SendList(st.Pid, entry.FullPath); }
+        if (entry.IsDir) { BrowserLoading = true; SendList(st, entry.FullPath); }
         else { RemotePath = entry.FullPath; OnRemotePathChanged(entry.FullPath); PullStatus = $"Selected {entry.Name} — double-click or click Pull to fetch it."; }
     }
 
@@ -361,7 +377,7 @@ public partial class MainViewModel : ObservableObject
         var st = ConnectedAgent();
         if (st is null) return;
         BrowserLoading = true;
-        SendList(st.Pid, path);
+        SendList(st, path);
     }
 
     /// <summary>Re-list the current directory (or the root if none is open yet).</summary>
@@ -381,9 +397,9 @@ public partial class MainViewModel : ObservableObject
         Pull();
     }
 
-    private void SendList(int pid, string path)
+    private void SendList(BrokerServer.AgentState st, string path)
     {
-        if (!_broker.SendCommand(pid, Broker.Format("list", 0, 0, path)))
+        if (!_broker.SendCommand(st.Pid, Broker.Format("list", st.Pid, st.Seq, path)))
         { PullStatus = "Couldn't reach the plugin."; BrowserLoading = false; }
     }
 
@@ -446,8 +462,12 @@ public partial class MainViewModel : ObservableObject
 
     private static string CombinePath(string dir, string name) => dir.TrimEnd('\\') + "\\" + name;
 
-    private void OnFrameUpdate(string kind, string payload)
+    private void OnFrameUpdate(int pid, int seq, string kind, string payload)
     {
+        // Frames stream from every connection; show only the one being viewed.
+        var sel = SelectedConnection?.State;
+        if (sel is null || sel.Pid != pid || sel.Seq != seq) return;
+
         var p = payload.Split('\t');
         if (kind == "framestats" && p.Length >= 3)
         {
@@ -545,7 +565,7 @@ public partial class MainViewModel : ObservableObject
         ProbeSamples.Clear();
         ProbeResult = "Probing…";
         ProbeRunning = true;
-        if (!_broker.SendCommand(st.Pid, Broker.Format("probe", 0, 0, "20")))
+        if (!_broker.SendCommand(st.Pid, Broker.Format("probe", st.Pid, st.Seq, "20")))
         { ProbeResult = "Couldn't reach the plugin."; ProbeRunning = false; }
     }
 
