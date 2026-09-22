@@ -36,7 +36,6 @@ public sealed class FrameInspector
 {
     private readonly Dictionary<string, Buffer> _byDirection = new();
     private long _seq;
-    private ulong _lastRequestId;
 
     private sealed class Buffer { public byte[] Data = Array.Empty<byte>(); public int Len; }
 
@@ -90,10 +89,10 @@ public sealed class FrameInspector
         {
             if (env.BodyCase == Envelope.BodyOneofCase.None && payload.Length > 0)
                 anomalies.Add("no body set (empty oneof)");
-            // request_id sanity: a non-zero id going backwards suggests reordering or a stale frame.
-            if (requestId != 0 && requestId < _lastRequestId)
-                anomalies.Add($"request_id {requestId} < a previously seen {_lastRequestId} (out of order?)");
-            if (requestId > _lastRequestId) _lastRequestId = requestId;
+            // NB: request_id is a correlation id the client allocates and the agent echoes — not a
+            // per-stream sequence number. Under any concurrency (e.g. a windowed file pull) ids
+            // legitimately arrive non-monotonically, so a passive tap cannot flag "out of order"
+            // without false positives. We deliberately do not.
         }
 
         var fields = env is null ? Array.Empty<FrameField>() : ExtractFields(env, depth: 3);
