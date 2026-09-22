@@ -32,7 +32,7 @@ switch (command)
     case "serve-tcp":
         // Serves the same AgentCore over a TCP socket, so a mock RDP server can bridge its
         // diagnostics DVC to it and drive the real agent. `serve-tcp <port>` (default 9999).
-        return ServeTcp.Run(ParsePort(args, 9999), ParseFileRoots(args));
+        return ServeTcp.Run(ParsePort(args, 9999), ParseFileRoots(args), args.Contains("--fake"));
 
     case "dvcwatch":
         // Standalone per-DVC traffic monitor — the RDP_DVC_Watcher tool this grew from,

@@ -18,10 +18,14 @@ internal sealed class AgentCore
     private readonly uint _sessionId = (uint)Process.GetCurrentProcess().SessionId;
     private readonly IReadOnlyList<string> _fileRoots;
     private readonly FilePullService? _filePull;
+    private readonly IAgentData _data;
+    private readonly bool _fake;
 
-    public AgentCore(EnvelopeRouter router, IReadOnlyList<string>? fileRoots = null)
+    public AgentCore(EnvelopeRouter router, IReadOnlyList<string>? fileRoots = null, IAgentData? data = null)
     {
         _router = router;
+        _fake = data is not null and not RealAgentData;
+        _data = data ?? new RealAgentData(_sessionId);
         _fileRoots = fileRoots ?? Array.Empty<string>();
         // File PULL is served from within the advertised roots only (read-only). No roots => the
         // capability is off and every path is rejected.
@@ -49,28 +53,27 @@ internal sealed class AgentCore
                     break;
 
                 case Envelope.BodyOneofCase.SysinfoRequest:
-                    _ = _router.RespondAsync(new Envelope { SysinfoSnapshot = SysInfoCollector.Collect() }, env.RequestId);
+                    _ = _router.RespondAsync(new Envelope { SysinfoSnapshot = _data.SysInfo() }, env.RequestId);
                     break;
 
                 case Envelope.BodyOneofCase.ProcessListRequest:
-                    var list = ProcessCollector.Collect(env.ProcessListRequest.AllSessions, _sessionId);
-                    _ = _router.RespondAsync(new Envelope { ProcessList = list }, env.RequestId);
+                    _ = _router.RespondAsync(new Envelope { ProcessList = _data.Processes(env.ProcessListRequest.AllSessions) }, env.RequestId);
                     break;
 
                 case Envelope.BodyOneofCase.NetConnRequest:
-                    _ = _router.RespondAsync(new Envelope { NetConnList = NetCollector.Collect() }, env.RequestId);
+                    _ = _router.RespondAsync(new Envelope { NetConnList = _data.NetConn() }, env.RequestId);
                     break;
 
                 case Envelope.BodyOneofCase.SessionListRequest:
-                    _ = _router.RespondAsync(new Envelope { SessionList = SessionCollector.Collect() }, env.RequestId);
+                    _ = _router.RespondAsync(new Envelope { SessionList = _data.Sessions() }, env.RequestId);
                     break;
 
                 case Envelope.BodyOneofCase.ServiceListRequest:
-                    _ = _router.RespondAsync(new Envelope { ServiceList = ServiceCollector.Collect() }, env.RequestId);
+                    _ = _router.RespondAsync(new Envelope { ServiceList = _data.Services() }, env.RequestId);
                     break;
 
                 case Envelope.BodyOneofCase.PerfRequest:
-                    _ = _router.RespondAsync(new Envelope { PerfSnapshot = PerfCollector.Collect() }, env.RequestId);
+                    _ = _router.RespondAsync(new Envelope { PerfSnapshot = _data.Perf() }, env.RequestId);
                     break;
 
                 // Periodic pushes aren't wired yet: any interval is answered one-shot,
@@ -109,7 +112,7 @@ internal sealed class AgentCore
         var caps = new Capabilities
         {
             ProtocolVersion = 1,
-            AgentBuild = "rdpeek-agent/0.1 (read-only)",
+            AgentBuild = _fake ? "rdpeek-agent/0.1 (fake demo)" : "rdpeek-agent/0.1 (read-only)",
             Sysinfo = true,
             ProcessList = true,
             ProcessKill = false,                 // read-only build

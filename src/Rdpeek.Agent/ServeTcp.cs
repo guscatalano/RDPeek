@@ -12,7 +12,7 @@ namespace Rdpeek.Agent;
 /// </summary>
 internal static class ServeTcp
 {
-    public static int Run(int port, IReadOnlyList<string> fileRoots)
+    public static int Run(int port, IReadOnlyList<string> fileRoots, bool fake = false)
     {
         var listener = new TcpListener(IPAddress.Loopback, port);
         listener.Start();
@@ -30,7 +30,7 @@ internal static class ServeTcp
 
             Console.WriteLine("tcp client connected (bridge).");
             Logger.Log("serve-tcp: client connected.");
-            try { Serve(client, fileRoots, stop); }
+            try { Serve(client, fileRoots, fake, stop); }
             catch (Exception ex) { Logger.Log($"serve-tcp error: {ex}"); }
             finally { client.Dispose(); }
 
@@ -39,7 +39,7 @@ internal static class ServeTcp
         return 0;
     }
 
-    private static void Serve(TcpClient client, IReadOnlyList<string> fileRoots, ManualResetEventSlim stop)
+    private static void Serve(TcpClient client, IReadOnlyList<string> fileRoots, bool fake, ManualResetEventSlim stop)
     {
         using var stream = client.GetStream();
         var writeLock = new object();
@@ -50,7 +50,7 @@ internal static class ServeTcp
             lock (writeLock) { stream.Write(frame, 0, frame.Length); stream.Flush(); }
             return Task.CompletedTask;
         });
-        _ = new AgentCore(router, fileRoots);
+        _ = new AgentCore(router, fileRoots, fake ? new FakeAgentData() : null);
 
         var buf = new byte[64 * 1024];
         while (!stop.IsSet)
