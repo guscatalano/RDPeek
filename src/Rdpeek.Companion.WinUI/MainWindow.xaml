@@ -121,6 +121,34 @@
                                        FontFamily="Consolas" LineHeight="20" />
                             <TextBlock Text="{x:Bind Vm.PerfText, Mode=OneWay}" TextWrapping="Wrap"
                                        FontFamily="Consolas" Opacity="0.85" />
+
+                            <!-- live trends (1s samples) -->
+                            <StackPanel Orientation="Horizontal" Spacing="24" Margin="0,4,0,0">
+                                <StackPanel Spacing="1">
+                                    <TextBlock Text="CPU" FontSize="11" Opacity="0.55" />
+                                    <TextBlock Text="{x:Bind Vm.CpuSparkLabel, Mode=OneWay}" FontFamily="Consolas" FontSize="14" />
+                                    <Grid Width="130" Height="30">
+                                        <Polyline Points="{x:Bind Vm.CpuSpark, Mode=OneWay}" StrokeThickness="1.5" StrokeLineJoin="Round"
+                                                  Stroke="{ThemeResource SystemFillColorSuccessBrush}" />
+                                    </Grid>
+                                </StackPanel>
+                                <StackPanel Spacing="1">
+                                    <TextBlock Text="Client RTT" FontSize="11" Opacity="0.55" />
+                                    <TextBlock Text="{x:Bind Vm.RttSparkLabel, Mode=OneWay}" FontFamily="Consolas" FontSize="14" />
+                                    <Grid Width="130" Height="30">
+                                        <Polyline Points="{x:Bind Vm.RttSpark, Mode=OneWay}" StrokeThickness="1.5" StrokeLineJoin="Round"
+                                                  Stroke="{ThemeResource AccentFillColorDefaultBrush}" />
+                                    </Grid>
+                                </StackPanel>
+                                <StackPanel Spacing="1">
+                                    <TextBlock Text="DVC throughput" FontSize="11" Opacity="0.55" />
+                                    <TextBlock Text="{x:Bind Vm.TputSparkLabel, Mode=OneWay}" FontFamily="Consolas" FontSize="14" />
+                                    <Grid Width="130" Height="30">
+                                        <Polyline Points="{x:Bind Vm.TputSpark, Mode=OneWay}" StrokeThickness="1.5" StrokeLineJoin="Round"
+                                                  Stroke="{ThemeResource SystemFillColorCautionBrush}" />
+                                    </Grid>
+                                </StackPanel>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
 

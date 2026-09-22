@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Rdpeek.Client;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Foundation;
 
 namespace Rdpeek.Companion.WinUI;
 
@@ -154,6 +155,17 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _freshness = "";
     [ObservableProperty] private Brush _livenessBrush = StaleBrush;
 
+    // Sparklines: short history of the fast-moving metrics, pre-scaled to a fixed pixel box.
+    private const int SparkCap = 90;                 // ~90 s at the 1 s sample cadence
+    private const double SparkW = 130, SparkH = 30;
+    private readonly Queue<double> _cpuHist = new(), _rttHist = new(), _tputHist = new();
+    [ObservableProperty] private PointCollection _cpuSpark = new();
+    [ObservableProperty] private PointCollection _rttSpark = new();
+    [ObservableProperty] private PointCollection _tputSpark = new();
+    [ObservableProperty] private string _cpuSparkLabel = "—";
+    [ObservableProperty] private string _rttSparkLabel = "—";
+    [ObservableProperty] private string _tputSparkLabel = "—";
+
     [ObservableProperty] private ConnectionRow? _selectedConnection;
     [ObservableProperty] private string _hostHeader = "Connect an RDP session to see host details.";
     [ObservableProperty] private string _perfText = "";
@@ -214,8 +226,8 @@ public partial class MainViewModel : ObservableObject
         _broker.Start();
 
         _timer = _dispatcher.CreateTimer();
-        _timer.Interval = TimeSpan.FromSeconds(2);
-        _timer.Tick += (_, _) => Refresh();
+        _timer.Interval = TimeSpan.FromSeconds(1);
+        _timer.Tick += (_, _) => { Refresh(); SampleSparklines(); };
         _timer.Start();
 
         Refresh();
@@ -273,6 +285,50 @@ public partial class MainViewModel : ObservableObject
                 ? $"Saved {Bytes(ulong.TryParse(p[1], out var b) ? b : 0)} to {p[2]}"
                 : $"Failed: {(p.Length > 3 ? p[3] : "unknown error")}";
         }
+    }
+
+    private void SampleSparklines()
+    {
+        var st = ConnectedAgent();
+        if (st?.Status != "connected") return;
+
+        double cpu = st.Sysinfo?.CpuPercent ?? 0;
+        double rtt = st.Link?.RttMsLast ?? 0;
+        double tput = st.Counters?.Channels.Sum(c => c.SendRateBps + c.RecvRateBps) ?? 0;
+
+        Roll(_cpuHist, cpu);
+        Roll(_rttHist, rtt);
+        Roll(_tputHist, tput);
+
+        CpuSpark = BuildSpark(_cpuHist, fixedMax: 100);   // percent
+        RttSpark = BuildSpark(_rttHist);
+        TputSpark = BuildSpark(_tputHist);
+
+        CpuSparkLabel = st.Sysinfo is null ? "—" : $"{cpu:0.0} %";
+        RttSparkLabel = st.Link is null ? "—" : $"{rtt:0.0} ms";
+        TputSparkLabel = st.Counters is null ? "—" : Rate(tput);
+    }
+
+    private static void Roll(Queue<double> q, double v)
+    {
+        q.Enqueue(v);
+        while (q.Count > SparkCap) q.Dequeue();
+    }
+
+    /// <summary>Scale a history buffer to a Polyline over a fixed WxH box, baseline at 0.</summary>
+    private static PointCollection BuildSpark(IReadOnlyCollection<double> data, double? fixedMax = null)
+    {
+        var pts = new PointCollection();
+        if (data.Count < 2) return pts;
+        var arr = data.ToArray();
+        double max = Math.Max(fixedMax ?? arr.Max(), 0.0001);
+        double stepX = SparkW / (arr.Length - 1);
+        for (int i = 0; i < arr.Length; i++)
+        {
+            double y = SparkH - Math.Clamp(arr[i] / max, 0, 1) * SparkH;
+            pts.Add(new Point(i * stepX, y));
+        }
+        return pts;
     }
 
     private BrokerServer.AgentState? ConnectedAgent() =>
