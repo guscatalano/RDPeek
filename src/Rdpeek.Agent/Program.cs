@@ -25,7 +25,8 @@ switch (command)
     case "serve":
         // Opens the DVC channel and serves the collectors. Requires a live RDP
         // session with the RDPeek client plugin listening on the same channel.
-        return ServeLoop.Run();
+        // --file-root <path> (repeatable) confines file PULL; defaults to %TEMP%.
+        return ServeLoop.Run(ParseFileRoots(args));
 
     case "dvcwatch":
         // Standalone per-DVC traffic monitor — the RDP_DVC_Watcher tool this grew from,
@@ -35,6 +36,18 @@ switch (command)
     default:
         Console.Error.WriteLine($"Unknown command '{command}'. Use: selftest | serve | dvcwatch");
         return 64;
+}
+
+// File-PULL roots from --file-root <path> (repeatable). Default: the session's %TEMP%, where logs
+// and crash dumps usually land — a useful, bounded default for a dev diagnostics agent.
+static IReadOnlyList<string> ParseFileRoots(string[] args)
+{
+    var roots = new List<string>();
+    for (int i = 0; i < args.Length - 1; i++)
+        if (args[i].Equals("--file-root", StringComparison.OrdinalIgnoreCase))
+            roots.Add(args[++i]);
+    if (roots.Count == 0) roots.Add(Path.GetTempPath());
+    return roots;
 }
 
 // Live table of per-channel traffic, refreshed in place until Ctrl+C.

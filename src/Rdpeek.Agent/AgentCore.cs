@@ -16,10 +16,17 @@ internal sealed class AgentCore
 {
     private readonly EnvelopeRouter _router;
     private readonly uint _sessionId = (uint)Process.GetCurrentProcess().SessionId;
+    private readonly IReadOnlyList<string> _fileRoots;
+    private readonly FilePullService? _filePull;
 
-    public AgentCore(EnvelopeRouter router)
+    public AgentCore(EnvelopeRouter router, IReadOnlyList<string>? fileRoots = null)
     {
         _router = router;
+        _fileRoots = fileRoots ?? Array.Empty<string>();
+        // File PULL is served from within the advertised roots only (read-only). No roots => the
+        // capability is off and every path is rejected.
+        if (_fileRoots.Count > 0)
+            _filePull = new FilePullService(_router, new DiskFileSource(_fileRoots), chunkSize: 256 * 1024);
         _router.OnMessage += Handle;
     }
 
@@ -97,16 +104,21 @@ internal sealed class AgentCore
         }
     }
 
-    private static Capabilities Capabilities() => new()
+    private Capabilities Capabilities()
     {
-        ProtocolVersion = 1,
-        AgentBuild = "rdpeek-agent/0.1 (read-only)",
-        Sysinfo = true,
-        ProcessList = true,
-        ProcessKill = false, // read-only build
-        FilePull = false,    // wired in M2
-        FilePush = false,
-        Counters = DvcCounters.Available,   // perfmon counter set, else the ETW fallback
-        MaxChunkBytes = 256 * 1024,
-    };
+        var caps = new Capabilities
+        {
+            ProtocolVersion = 1,
+            AgentBuild = "rdpeek-agent/0.1 (read-only)",
+            Sysinfo = true,
+            ProcessList = true,
+            ProcessKill = false,                 // read-only build
+            FilePull = _fileRoots.Count > 0,     // pull-only, confined to the roots below
+            FilePush = false,
+            Counters = DvcCounters.Available,    // perfmon counter set, else the ETW fallback
+            MaxChunkBytes = 256 * 1024,
+        };
+        caps.FileRoots.AddRange(_fileRoots);
+        return caps;
+    }
 }
