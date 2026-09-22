@@ -20,6 +20,7 @@ public class BrokerTests
     private sealed class FakeCompanion : IDisposable
     {
         private readonly CancellationTokenSource _cts = new();
+        private volatile StreamWriter? _writer;   // full-duplex: send commands down to the plugin
         public ConcurrentQueue<string> Lines { get; } = new();
 
         public FakeCompanion() => _ = AcceptLoopAsync(_cts.Token);
@@ -32,7 +33,7 @@ public class BrokerTests
                 try
                 {
                     server = new NamedPipeServerStream(
-                        Broker.PipeName, PipeDirection.In,
+                        Broker.PipeName, PipeDirection.InOut,
                         NamedPipeServerStream.MaxAllowedServerInstances,
                         PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
 
@@ -59,6 +60,7 @@ public class BrokerTests
                 using (server)
                 using (var reader = new StreamReader(server))
                 {
+                    _writer = new StreamWriter(server) { AutoFlush = true };
                     string? line;
                     while ((line = await reader.ReadLineAsync(ct).ConfigureAwait(false)) is not null)
                     {
@@ -67,6 +69,15 @@ public class BrokerTests
                 }
             }
             catch { /* closed */ }
+            finally { _writer = null; }
+        }
+
+        /// <summary>Send a command line to the connected plugin. False if none is connected yet.</summary>
+        public bool Send(string line)
+        {
+            var w = _writer;
+            if (w is null) return false;
+            try { w.WriteLine(line); return true; } catch { return false; }
         }
 
         public bool Saw(string kind, int seq) =>
@@ -93,6 +104,34 @@ public class BrokerTests
     // Each test uses its own seq so leftover state from a previous test can't satisfy it.
     private static int _nextSeq = 1000;
     private static int NextSeq() => Interlocked.Increment(ref _nextSeq);
+
+    [Fact]
+    public async Task CommandReceived_FiresWhenCompanionSendsDown_OverTheFullDuplexPipe()
+    {
+        using var fake = new FakeCompanion();
+
+        int pid = 7777, seq = NextSeq();
+        string? received = null;
+        void Handler(string line) => received = line;
+        Broker.CommandReceived += Handler;
+        try
+        {
+            // The plugin reports, so the pipe connects (and the fake companion gets a writer).
+            Broker.Report("listening", pid, seq);
+            Assert.True(await Eventually(() => fake.Saw("listening", seq)), "companion never saw the plugin connect");
+
+            // Companion → plugin command over the same duplex pipe.
+            Assert.True(await Eventually(() => fake.Send(Broker.Format("pull", 0, 0, @"C:\diag\x.log"))),
+                "no connected plugin to command");
+            Assert.True(await Eventually(() => received is not null), "plugin never received the command");
+            Assert.Equal("pull", Broker.Parse(received!)!.Value.kind);
+            Assert.Equal(@"C:\diag\x.log", Broker.Parse(received!)!.Value.payload);
+        }
+        finally
+        {
+            Broker.CommandReceived -= Handler;
+        }
+    }
 
     [Fact]
     public void Report_ReturnsImmediately_WhenCompanionIsAbsent()

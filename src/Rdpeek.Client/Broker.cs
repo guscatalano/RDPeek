@@ -49,6 +49,19 @@ public static class Broker
 
     private static int _senderStarted;
 
+    /// <summary>Raised for each command line the companion sends down (companion → plugin), e.g. a
+    /// file-pull request. The pipe is full-duplex: the sender owns writing, a reader raises this.</summary>
+    public static event Action<string>? CommandReceived;
+
+    private static CancellationTokenSource? _readerCts;
+
+    /// <summary>Send a line back to the companion out-of-band (e.g. file-pull progress). Best-effort;
+    /// rides the same queue as telemetry so it never blocks a caller.</summary>
+    public static void Send(string line)
+    {
+        try { EnsureSenderStarted(); Queue.Writer.TryWrite(line); } catch { }
+    }
+
     /// <summary>
     /// Latest connection-status line, replayed whenever the pipe is (re)established so a
     /// companion started after the RDP connection still sees the right state.
@@ -177,7 +190,7 @@ public static class Broker
             // anything. Only pay for a real connect attempt once the pipe actually exists.
             if (!File.Exists(PipePath)) return false;
 
-            var candidate = new NamedPipeClientStream(".", PipeName, PipeDirection.Out);
+            var candidate = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut);
             try
             {
                 candidate.Connect(ConnectTimeoutMs);
@@ -190,6 +203,9 @@ public static class Broker
 
             pipe = candidate;
             writer = new StreamWriter(candidate) { AutoFlush = true };
+            // Full-duplex: read companion → plugin commands on a background reader.
+            _readerCts = new CancellationTokenSource();
+            _ = ReadCommandsAsync(new StreamReader(candidate), _readerCts.Token);
             return true;
         }
         catch
@@ -211,8 +227,23 @@ public static class Broker
         }
     }
 
+    private static async Task ReadCommandsAsync(StreamReader reader, CancellationToken ct)
+    {
+        try
+        {
+            string? line;
+            while (!ct.IsCancellationRequested && (line = await reader.ReadLineAsync(ct).ConfigureAwait(false)) != null)
+            {
+                try { CommandReceived?.Invoke(line); } catch { /* handler must not kill the reader */ }
+            }
+        }
+        catch { /* pipe closed */ }
+    }
+
     private static void Disconnect(ref NamedPipeClientStream? pipe, ref StreamWriter? writer)
     {
+        try { _readerCts?.Cancel(); } catch { }
+        _readerCts = null;
         try { writer?.Dispose(); } catch { }
         try { pipe?.Dispose(); } catch { }
         writer = null;

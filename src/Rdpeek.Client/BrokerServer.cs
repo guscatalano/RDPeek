@@ -32,12 +32,24 @@ public sealed class BrokerServer : IDisposable
     }
 
     private readonly ConcurrentDictionary<string, AgentState> _states = new();
+    private readonly ConcurrentDictionary<int, StreamWriter> _pluginWriters = new();  // pid -> command sink
     private readonly CancellationTokenSource _cts = new();
 
     /// <summary>Raised (on a background thread) whenever a plugin reports a change.</summary>
     public event Action? Changed;
 
     public IReadOnlyList<AgentState> Snapshot() => _states.Values.ToList();
+
+    /// <summary>Send a command line down to a connected plugin (companion → plugin). pid 0 broadcasts
+    /// to all. Best-effort — returns false if no matching plugin is connected.</summary>
+    public bool SendCommand(int pid, string line)
+    {
+        bool sent = false;
+        foreach (var (p, w) in _pluginWriters)
+            if (pid == 0 || p == pid)
+                try { w.WriteLine(line); sent = true; } catch { }
+        return sent;
+    }
 
     public void Start() => _ = AcceptLoopAsync(_cts.Token);
 
@@ -64,6 +76,8 @@ public sealed class BrokerServer : IDisposable
 
     private async Task HandleAsync(NamedPipeServerStream server)
     {
+        var writer = new StreamWriter(server) { AutoFlush = true };   // full-duplex: send commands down
+        int connPid = 0;
         try
         {
             using var reader = new StreamReader(server);
@@ -75,6 +89,7 @@ public sealed class BrokerServer : IDisposable
 
                 var (kind, pid, seq, payload) = parsed.Value;
                 var key = $"{pid}:{seq}";
+                if (pid != 0) { connPid = pid; _pluginWriters[pid] = writer; }
 
                 if (kind == "gone")
                 {
@@ -131,6 +146,7 @@ public sealed class BrokerServer : IDisposable
         }
         finally
         {
+            if (connPid != 0) _pluginWriters.TryRemove(new KeyValuePair<int, StreamWriter>(connPid, writer));
             server.Dispose();
         }
     }
@@ -144,7 +160,7 @@ public sealed class BrokerServer : IDisposable
     private static NamedPipeServerStream CreateServer()
     {
         var pipe = new NamedPipeServerStream(
-            Broker.PipeName, PipeDirection.In,
+            Broker.PipeName, PipeDirection.InOut,
             NamedPipeServerStream.MaxAllowedServerInstances,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         try { ApplyLowIntegrityLabel(pipe.SafePipeHandle); } catch { /* best-effort */ }
