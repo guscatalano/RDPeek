@@ -129,9 +129,33 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
     private readonly object _tapLock = new();
     private long _framesIn, _framesOut, _frameAnomalies;
 
-    /// <summary>Tap raw channel bytes into the frame inspector (both directions), surfacing per-frame
-    /// anomalies to the companion immediately. The inspector isn't thread-safe and the two directions
-    /// run on different threads, so serialise.</summary>
+    // Rate-limit the per-frame feed to the companion so a bulk file pull can't flood the broker
+    // pipe with thousands of rows a second. Token bucket, refilled by elapsed time; anomalous
+    // frames bypass it so a problem is never dropped.
+    private readonly object _feedLock = new();
+    private double _feedTokens = FeedBurst;
+    private long _feedTicks = Stopwatch.GetTimestamp();
+    private const double FeedRatePerSec = 60;
+    private const double FeedBurst = 80;
+
+    private bool FeedAllow()
+    {
+        lock (_feedLock)
+        {
+            long now = Stopwatch.GetTimestamp();
+            double secs = Stopwatch.GetElapsedTime(_feedTicks, now).TotalSeconds;
+            _feedTicks = now;
+            _feedTokens = Math.Min(FeedBurst, _feedTokens + secs * FeedRatePerSec);
+            if (_feedTokens < 1) return false;
+            _feedTokens -= 1;
+            return true;
+        }
+    }
+
+    /// <summary>Tap raw channel bytes into the frame inspector (both directions) and stream each frame
+    /// to the companion's live Frames feed — direction, message type, size, request id, and any
+    /// anomalies. The inspector isn't thread-safe and the two directions run on different threads,
+    /// so serialise.</summary>
     private void Tap(string direction, byte[] bytes)
     {
         try
@@ -142,12 +166,13 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
             {
                 if (direction == "in") Interlocked.Increment(ref _framesIn);
                 else Interlocked.Increment(ref _framesOut);
-                if (r.Anomalies.Count > 0)
-                {
-                    Interlocked.Increment(ref _frameAnomalies);
-                    Broker.Send(Broker.Format("frameanomaly", Environment.ProcessId, _seq,
-                        $"{r.Direction}\t{r.BodyCase}\t{string.Join("; ", r.Anomalies)}"));
-                }
+                bool anomalous = r.Anomalies.Count > 0;
+                if (anomalous) Interlocked.Increment(ref _frameAnomalies);
+
+                // frame = direction \t bodyCase \t size \t requestId \t decoded(0/1) \t anomalies
+                if (anomalous || FeedAllow())
+                    Broker.Send(Broker.Format("frame", Environment.ProcessId, _seq,
+                        $"{r.Direction}\t{r.BodyCase}\t{r.SizeBytes}\t{r.RequestId}\t{(r.Decoded ? 1 : 0)}\t{string.Join("; ", r.Anomalies)}"));
             }
         }
         catch { /* a diagnostic tap must never disturb the channel */ }

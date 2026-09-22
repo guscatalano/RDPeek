@@ -116,7 +116,7 @@ public sealed class BrokerServer : IDisposable
                     continue;
                 }
 
-                if (kind is "framestats" or "frameanomaly")
+                if (kind is "framestats" or "frame")
                 {
                     FrameUpdate?.Invoke(kind, payload);
                     continue;

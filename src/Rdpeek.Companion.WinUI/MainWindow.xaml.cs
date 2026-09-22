@@ -33,4 +33,7 @@ public sealed partial class MainWindow : Window
         if (e.ClickedItem is RemoteEntry entry && Vm.OpenEntryCommand.CanExecute(entry))
             Vm.OpenEntryCommand.Execute(entry);
     }
+
+    /// <summary>x:Bind function helper: WinUI has no built-in bool→Visibility converter.</summary>
+    public Visibility VisibleIf(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
 }

@@ -93,6 +93,28 @@ internal sealed class FakeAgentData : IAgentData
         C("Available Memory", 41984, "MB");
         C("Disk Queue Length", 0.03, "");
         C("Processes", 148, "");
+
+        // RemoteFX Network + Graphics — the RDP link-quality counters, which really exist only on the
+        // session host. Names match RemoteFxCollector; values jitter a little so the Link tab looks live.
+        const string inst = "RDP-Tcp 2";
+        double J(double v, double spread) => Math.Round(v * (1 + (_rng.NextDouble() - 0.5) * spread), 2);
+        void L(string name, double value) =>
+            snap.Counters.Add(new PerfSnapshot.Types.Counter { Name = name, Value = value, Group = "link", Instance = inst });
+        void G(string name, double value) =>
+            snap.Counters.Add(new PerfSnapshot.Types.Counter { Name = name, Value = value, Group = "graphics", Instance = inst });
+        L("Current TCP RTT", J(28, 0.4));
+        L("Base TCP RTT", 24);
+        L("Current TCP Bandwidth", J(48_000_000, 0.1));
+        L("Total Sent Rate", J(3_500_000, 0.3));
+        L("Total Received Rate", J(180_000, 0.3));
+        L("Loss Rate", J(0.1, 1.0));
+        L("Retransmission Rate", J(0.2, 1.0));
+        G("Frame Quality", J(92, 0.06));
+        G("Average Encoding Time", J(6, 0.4));
+        G("Input Frames/Second", J(30, 0.2));
+        G("Output Frames/Second", J(28, 0.2));
+        G("Frames Skipped/Second - Insufficient Network Resources", J(0.5, 1.0));
+        G("Graphics Compression ratio", J(12, 0.2));
         return snap;
     }
 

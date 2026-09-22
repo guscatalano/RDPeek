@@ -323,37 +323,43 @@
                                 <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" />
                             </Grid.RowDefinitions>
                             <TextBlock Grid.Row="0" Margin="12,10,12,2" Opacity="0.8" TextWrapping="Wrap"
-                                       Text="The frame inspector taps every [len][Envelope] frame on the diagnostics channel and flags malformed ones — bad length prefixes, undecodable payloads, empty bodies, out-of-order request ids." />
+                                       Text="Every [len][Envelope] frame on the diagnostics channel, tapped live as it crosses the plugin — newest on top. Like Wireshark scoped to this one channel: watch the request/response traffic and spot malformed frames (bad length prefixes, undecodable payloads, empty bodies, out-of-order request ids), highlighted in red." />
                             <TextBlock Grid.Row="1" Margin="12,2,12,8" FontFamily="Consolas"
                                        Text="{x:Bind Vm.FrameStats, Mode=OneWay}" />
                             <Grid Grid.Row="2" Padding="12,4" ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="0.14*" /><ColumnDefinition Width="0.10*" />
-                                    <ColumnDefinition Width="0.22*" /><ColumnDefinition Width="0.54*" />
+                                    <ColumnDefinition Width="0.14*" /><ColumnDefinition Width="0.09*" />
+                                    <ColumnDefinition Width="0.22*" /><ColumnDefinition Width="0.10*" />
+                                    <ColumnDefinition Width="0.08*" /><ColumnDefinition Width="0.37*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="Time" FontWeight="SemiBold" />
                                 <TextBlock Grid.Column="1" Text="Dir" FontWeight="SemiBold" />
                                 <TextBlock Grid.Column="2" Text="Message" FontWeight="SemiBold" />
-                                <TextBlock Grid.Column="3" Text="Anomaly" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="3" Text="Size" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="4" Text="Req" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="5" Text="Notes" FontWeight="SemiBold" />
                             </Grid>
-                            <ListView Grid.Row="2" Margin="0,32,0,0" ItemsSource="{x:Bind Vm.FrameAnomalies}" SelectionMode="None">
+                            <ListView Grid.Row="2" Margin="0,32,0,0" ItemsSource="{x:Bind Vm.FrameFeed}" SelectionMode="None">
                                 <ListView.ItemContainerStyle>
                                     <Style TargetType="ListViewItem">
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                        <Setter Property="Padding" Value="12,4" /><Setter Property="MinHeight" Value="0" />
+                                        <Setter Property="Padding" Value="12,3" /><Setter Property="MinHeight" Value="0" />
                                     </Style>
                                 </ListView.ItemContainerStyle>
                                 <ListView.ItemTemplate>
-                                    <DataTemplate x:DataType="local:FrameAnomalyRow">
+                                    <DataTemplate x:DataType="local:FrameRow">
                                         <Grid ColumnSpacing="8">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="0.14*" /><ColumnDefinition Width="0.10*" />
-                                                <ColumnDefinition Width="0.22*" /><ColumnDefinition Width="0.54*" />
+                                                <ColumnDefinition Width="0.14*" /><ColumnDefinition Width="0.09*" />
+                                                <ColumnDefinition Width="0.22*" /><ColumnDefinition Width="0.10*" />
+                                                <ColumnDefinition Width="0.08*" /><ColumnDefinition Width="0.37*" />
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Grid.Column="0" Text="{x:Bind Time}" FontFamily="Consolas" Opacity="0.7" />
-                                            <TextBlock Grid.Column="1" Text="{x:Bind Direction}" />
-                                            <TextBlock Grid.Column="2" Text="{x:Bind Type}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Grid.Column="3" Text="{x:Bind Detail}" TextWrapping="Wrap"
+                                            <TextBlock Grid.Column="1" Text="{x:Bind Dir}" FontFamily="Consolas" Opacity="0.8" />
+                                            <TextBlock Grid.Column="2" Text="{x:Bind Message}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="3" Text="{x:Bind Size}" FontFamily="Consolas" Opacity="0.7" />
+                                            <TextBlock Grid.Column="4" Text="{x:Bind Req}" FontFamily="Consolas" Opacity="0.6" />
+                                            <TextBlock Grid.Column="5" Text="{x:Bind Note}" TextWrapping="Wrap"
                                                        Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
                                         </Grid>
                                     </DataTemplate>
@@ -378,33 +384,43 @@
 
                             <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                 <Button Content="Browse" Command="{x:Bind Vm.BrowseCommand}" />
+                                <ProgressRing IsActive="{x:Bind Vm.BrowserLoading, Mode=OneWay}" Width="18" Height="18" />
                                 <TextBlock VerticalAlignment="Center" FontFamily="Consolas" Opacity="0.8"
                                            Text="{x:Bind Vm.CurrentRemotePath, Mode=OneWay}" />
                             </StackPanel>
 
-                            <ListView Grid.Row="2" ItemsSource="{x:Bind Vm.RemoteEntries}" IsItemClickEnabled="True"
-                                      ItemClick="OnEntryClick" SelectionMode="None"
-                                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6">
-                                <ListView.ItemContainerStyle>
-                                    <Style TargetType="ListViewItem">
-                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                        <Setter Property="Padding" Value="10,4" /><Setter Property="MinHeight" Value="0" />
-                                    </Style>
-                                </ListView.ItemContainerStyle>
-                                <ListView.ItemTemplate>
-                                    <DataTemplate x:DataType="local:RemoteEntry">
-                                        <Grid ColumnSpacing="10">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <FontIcon Grid.Column="0" FontSize="15" Glyph="{x:Bind Glyph}" />
-                                            <TextBlock Grid.Column="1" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Grid.Column="2" Text="{x:Bind Size}" FontFamily="Consolas" Opacity="0.6" />
-                                        </Grid>
-                                    </DataTemplate>
-                                </ListView.ItemTemplate>
-                            </ListView>
+                            <Grid Grid.Row="2">
+                                <ListView ItemsSource="{x:Bind Vm.RemoteEntries}" IsItemClickEnabled="True"
+                                          ItemClick="OnEntryClick" SelectionMode="None"
+                                          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6">
+                                    <ListView.ItemContainerStyle>
+                                        <Style TargetType="ListViewItem">
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                            <Setter Property="Padding" Value="10,4" /><Setter Property="MinHeight" Value="0" />
+                                        </Style>
+                                    </ListView.ItemContainerStyle>
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="local:RemoteEntry">
+                                            <Grid ColumnSpacing="10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <FontIcon Grid.Column="0" FontSize="15" Glyph="{x:Bind Glyph}" />
+                                                <TextBlock Grid.Column="1" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Column="2" Text="{x:Bind Size}" FontFamily="Consolas" Opacity="0.6" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                                <!-- Loading overlay while the directory listing round-trips to the agent. -->
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8"
+                                            Visibility="{x:Bind VisibleIf(Vm.BrowserLoading), Mode=OneWay}">
+                                    <ProgressRing IsActive="{x:Bind Vm.BrowserLoading, Mode=OneWay}" Width="36" Height="36"
+                                                  HorizontalAlignment="Center" />
+                                    <TextBlock Text="Listing remote directory…" Opacity="0.7" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Grid>
 
                             <StackPanel Grid.Row="3" Spacing="8">
                                 <TextBox Header="Remote path (click a file above, or type)"

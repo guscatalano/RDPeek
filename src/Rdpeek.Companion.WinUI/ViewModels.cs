@@ -35,8 +35,9 @@ public sealed record DvcRow(string Name, string Sent, string Received, string Se
 /// <summary>One RemoteFX link/graphics counter, as Windows names it.</summary>
 public sealed record LinkRow(string Name, string Value, string Instance);
 
-/// <summary>A flagged frame the inspector saw on the channel.</summary>
-public sealed record FrameAnomalyRow(string Time, string Direction, string Type, string Detail);
+/// <summary>One frame the inspector tapped on the channel, for the live Frames feed. Note carries
+/// any anomaly text; IsAnomaly flags the row for highlighting.</summary>
+public sealed record FrameRow(string Time, string Dir, string Message, string Size, string Req, string Note, bool IsAnomaly);
 
 /// <summary>An entry in the remote file browser.</summary>
 public sealed record RemoteEntry(string Glyph, string Name, string Size, bool IsDir, string FullPath);
@@ -75,10 +76,11 @@ public partial class MainViewModel : ObservableObject
 
     // Frame inspector.
     [ObservableProperty] private string _frameStats = "No frames tapped yet — connect an agent.";
-    public ObservableCollection<FrameAnomalyRow> FrameAnomalies { get; } = new();
+    public ObservableCollection<FrameRow> FrameFeed { get; } = new();
 
     // Remote file browser.
     [ObservableProperty] private string _currentRemotePath = "";
+    [ObservableProperty] private bool _browserLoading;
     public ObservableCollection<RemoteEntry> RemoteEntries { get; } = new();
 
     public MainViewModel(DispatcherQueue dispatcher)
@@ -159,6 +161,7 @@ public partial class MainViewModel : ObservableObject
     {
         var st = ConnectedAgent();
         if (st is null) { PullStatus = "No connected agent to browse."; return; }
+        BrowserLoading = true;
         SendList(st.Pid, "");   // empty path → the agent's first file root
     }
 
@@ -168,18 +171,19 @@ public partial class MainViewModel : ObservableObject
         if (entry is null) return;
         var st = ConnectedAgent();
         if (st is null) return;
-        if (entry.IsDir) SendList(st.Pid, entry.FullPath);
+        if (entry.IsDir) { BrowserLoading = true; SendList(st.Pid, entry.FullPath); }
         else { RemotePath = entry.FullPath; OnRemotePathChanged(entry.FullPath); PullStatus = $"Selected {entry.Name} — click Pull."; }
     }
 
     private void SendList(int pid, string path)
     {
         if (!_broker.SendCommand(pid, Broker.Format("list", 0, 0, path)))
-            PullStatus = "Couldn't reach the plugin.";
+        { PullStatus = "Couldn't reach the plugin."; BrowserLoading = false; }
     }
 
     private void OnFileList(string kind, string payload)
     {
+        BrowserLoading = false;
         if (kind == "filelisterror")
         {
             var e = payload.Split('\t');
@@ -220,10 +224,18 @@ public partial class MainViewModel : ObservableObject
         {
             FrameStats = $"{p[0]} frames in · {p[1]} out · {p[2]} anomalies";
         }
-        else if (kind == "frameanomaly" && p.Length >= 3)
+        else if (kind == "frame" && p.Length >= 6)
         {
-            FrameAnomalies.Insert(0, new FrameAnomalyRow(DateTime.Now.ToString("HH:mm:ss"), p[0], p[1], p[2]));
-            while (FrameAnomalies.Count > 200) FrameAnomalies.RemoveAt(FrameAnomalies.Count - 1);
+            // direction \t bodyCase \t size \t requestId \t decoded(0/1) \t anomalies
+            bool decoded = p[4] == "1";
+            bool anom = p[5].Length > 0;
+            string dir = p[0] == "in" ? "↓ in" : "↑ out";
+            string size = long.TryParse(p[2], out var sz) ? Bytes((ulong)sz) : p[2];
+            string req = p[3] == "0" ? "" : p[3];
+            string note = anom ? "⚠ " + p[5] : (decoded ? "" : "undecodable");
+            FrameFeed.Insert(0, new FrameRow(DateTime.Now.ToString("HH:mm:ss.fff"), dir,
+                p[1], size, req, note, anom || !decoded));
+            while (FrameFeed.Count > 300) FrameFeed.RemoveAt(FrameFeed.Count - 1);
         }
     }
 
