@@ -95,4 +95,34 @@ internal sealed class FakeAgentData : IAgentData
         C("Processes", 148, "");
         return snap;
     }
+
+    // Live-looking per-channel traffic: bytes accumulate across polls, rates jitter ±15%.
+    private long _tick;
+    private readonly Random _rng = new();
+
+    public CounterSample DvcCounters()
+    {
+        _tick++;
+        var s = new CounterSample { Source = "perfmon", Note = "Per-channel traffic on the session host (demo data)." };
+        void Ch(string name, ulong baseSent, ulong baseRecv, double sendRate, double recvRate, double rtt)
+        {
+            double j = 0.85 + _rng.NextDouble() * 0.30;
+            s.Channels.Add(new CounterSample.Types.ChannelCounters
+            {
+                Name = name,
+                BytesSent = baseSent + (ulong)(_tick * sendRate * 3),      // ~3s per poll
+                BytesReceived = baseRecv + (ulong)(_tick * recvRate * 3),
+                SendRateBps = sendRate * j,
+                RecvRateBps = recvRate * j,
+                RttMs = rtt > 0 ? rtt * j : 0,
+            });
+        }
+        Ch("graphics", 120_000_000, 40_000, 3_500_000, 800, 0);
+        Ch("input", 8_000, 900_000, 200, 42_000, 0);
+        Ch("rdpdr", 3_000_000, 4_800_000, 90_000, 150_000, 1.2);
+        Ch("cliprdr", 700_000, 350_000, 0, 0, 0.9);
+        Ch("drdynvc", 90_000, 84_000, 300, 280, 0);
+        Ch("dvc::diag::inspector", 200_000, 480_000, 2_000, 4_800, 2.1);
+        return s;
+    }
 }

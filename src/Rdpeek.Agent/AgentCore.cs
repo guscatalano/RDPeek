@@ -79,7 +79,7 @@ internal sealed class AgentCore
                 // Periodic pushes aren't wired yet: any interval is answered one-shot,
                 // which is what the polling viewer asks for.
                 case Envelope.BodyOneofCase.CounterSubscribe:
-                    _ = _router.RespondAsync(new Envelope { CounterSample = DvcCounters.Snapshot() }, env.RequestId);
+                    _ = _router.RespondAsync(new Envelope { CounterSample = _data.DvcCounters() }, env.RequestId);
                     break;
 
                 case Envelope.BodyOneofCase.ChannelRosterRequest:

@@ -366,20 +366,59 @@
                 <!-- ===================== FILES ===================== -->
                 <Grid x:Name="FilesView" Visibility="Collapsed">
                     <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8"
-                            VerticalAlignment="Top">
-                        <StackPanel Margin="14" Spacing="10">
-                            <TextBlock Opacity="0.8" TextWrapping="Wrap"
-                                       Text="Pull a file off the remote session onto this machine. The agent serves it (windowed, sha256-verified) only from within its advertised file roots." />
-                            <TextBox Header="Remote path (on the session host)"
-                                     PlaceholderText="C:\Users\…\AppData\Local\Temp\app.log"
-                                     Text="{x:Bind Vm.RemotePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBox Header="Save to (on this machine)"
-                                     Text="{x:Bind Vm.LocalDest, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            <Button Content="Pull" Command="{x:Bind Vm.PullCommand}" Style="{ThemeResource AccentButtonStyle}" />
-                            <ProgressBar Minimum="0" Maximum="100" Value="{x:Bind Vm.PullProgress, Mode=OneWay}" />
-                            <TextBlock Opacity="0.75" TextWrapping="Wrap" Text="{x:Bind Vm.PullStatus, Mode=OneWay}" />
-                        </StackPanel>
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                        <Grid Margin="14" RowSpacing="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" /><RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Opacity="0.8" TextWrapping="Wrap"
+                                       Text="Browse the remote agent's files (within its advertised roots) and pull one onto this machine — windowed, sha256-verified." />
+
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Button Content="Browse" Command="{x:Bind Vm.BrowseCommand}" />
+                                <TextBlock VerticalAlignment="Center" FontFamily="Consolas" Opacity="0.8"
+                                           Text="{x:Bind Vm.CurrentRemotePath, Mode=OneWay}" />
+                            </StackPanel>
+
+                            <ListView Grid.Row="2" ItemsSource="{x:Bind Vm.RemoteEntries}" IsItemClickEnabled="True"
+                                      ItemClick="OnEntryClick" SelectionMode="None"
+                                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6">
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="ListViewItem">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Padding" Value="10,4" /><Setter Property="MinHeight" Value="0" />
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="local:RemoteEntry">
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <FontIcon Grid.Column="0" FontSize="15" Glyph="{x:Bind Glyph}" />
+                                            <TextBlock Grid.Column="1" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="2" Text="{x:Bind Size}" FontFamily="Consolas" Opacity="0.6" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+
+                            <StackPanel Grid.Row="3" Spacing="8">
+                                <TextBox Header="Remote path (click a file above, or type)"
+                                         PlaceholderText="C:\Users\…\Temp\app.log"
+                                         Text="{x:Bind Vm.RemotePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Header="Save to (on this machine)"
+                                         Text="{x:Bind Vm.LocalDest, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <Button Content="Pull" Command="{x:Bind Vm.PullCommand}" Style="{ThemeResource AccentButtonStyle}" />
+                                    <ProgressBar Width="220" Minimum="0" Maximum="100" Value="{x:Bind Vm.PullProgress, Mode=OneWay}" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <TextBlock Opacity="0.75" TextWrapping="Wrap" Text="{x:Bind Vm.PullStatus, Mode=OneWay}" />
+                            </StackPanel>
+                        </Grid>
                     </Border>
                 </Grid>
 

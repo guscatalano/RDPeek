@@ -16,6 +16,7 @@ internal interface IAgentData
     SessionList Sessions();
     ServiceList Services();
     PerfSnapshot Perf();
+    CounterSample DvcCounters();
 }
 
 /// <summary>Real collectors — the shipped behaviour.</summary>
@@ -27,4 +28,5 @@ internal sealed class RealAgentData(uint sessionId) : IAgentData
     public SessionList Sessions() => SessionCollector.Collect();
     public ServiceList Services() => ServiceCollector.Collect();
     public PerfSnapshot Perf() => PerfCollector.Collect();
+    public CounterSample DvcCounters() => Agent.DvcCounters.Snapshot();
 }

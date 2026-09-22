@@ -38,6 +38,9 @@ public sealed record LinkRow(string Name, string Value, string Instance);
 /// <summary>A flagged frame the inspector saw on the channel.</summary>
 public sealed record FrameAnomalyRow(string Time, string Direction, string Type, string Detail);
 
+/// <summary>An entry in the remote file browser.</summary>
+public sealed record RemoteEntry(string Glyph, string Name, string Size, bool IsDir, string FullPath);
+
 public partial class MainViewModel : ObservableObject
 {
     private const string InstallCommand =
@@ -74,12 +77,17 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _frameStats = "No frames tapped yet — connect an agent.";
     public ObservableCollection<FrameAnomalyRow> FrameAnomalies { get; } = new();
 
+    // Remote file browser.
+    [ObservableProperty] private string _currentRemotePath = "";
+    public ObservableCollection<RemoteEntry> RemoteEntries { get; } = new();
+
     public MainViewModel(DispatcherQueue dispatcher)
     {
         _dispatcher = dispatcher;
         _broker.Changed += () => _dispatcher.TryEnqueue(Refresh);
         _broker.PullUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnPullUpdate(kind, payload));
         _broker.FrameUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnFrameUpdate(kind, payload));
+        _broker.FileListUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnFileList(kind, payload));
         _broker.Start();
 
         _timer = _dispatcher.CreateTimer();
@@ -142,6 +150,68 @@ public partial class MainViewModel : ObservableObject
                 : $"Failed: {(p.Length > 3 ? p[3] : "unknown error")}";
         }
     }
+
+    private BrokerServer.AgentState? ConnectedAgent() =>
+        SelectedConnection?.State ?? Connections.Select(c => c.State).FirstOrDefault(s => s?.Status == "connected");
+
+    [RelayCommand]
+    private void Browse()
+    {
+        var st = ConnectedAgent();
+        if (st is null) { PullStatus = "No connected agent to browse."; return; }
+        SendList(st.Pid, "");   // empty path → the agent's first file root
+    }
+
+    [RelayCommand]
+    private void OpenEntry(RemoteEntry? entry)
+    {
+        if (entry is null) return;
+        var st = ConnectedAgent();
+        if (st is null) return;
+        if (entry.IsDir) SendList(st.Pid, entry.FullPath);
+        else { RemotePath = entry.FullPath; OnRemotePathChanged(entry.FullPath); PullStatus = $"Selected {entry.Name} — click Pull."; }
+    }
+
+    private void SendList(int pid, string path)
+    {
+        if (!_broker.SendCommand(pid, Broker.Format("list", 0, 0, path)))
+            PullStatus = "Couldn't reach the plugin.";
+    }
+
+    private void OnFileList(string kind, string payload)
+    {
+        if (kind == "filelisterror")
+        {
+            var e = payload.Split('\t');
+            PullStatus = $"Couldn't list {(e.Length > 0 ? e[0] : "")}: {(e.Length > 1 ? e[1] : "error")}";
+            return;
+        }
+        var recs = payload.Split('\x1e');
+        CurrentRemotePath = recs[0];
+        RemoteEntries.Clear();
+        var parent = ParentPath(recs[0]);
+        if (parent is not null) RemoteEntries.Add(new RemoteEntry("\uE72B", "..", "", true, parent));   // up arrow
+        foreach (var r in recs.Skip(1))
+        {
+            var f = r.Split('\x1f');
+            if (f.Length < 3) continue;
+            bool dir = f[1] == "d";
+            string size = dir ? "" : (ulong.TryParse(f[2], out var b) ? Bytes(b) : "");
+            RemoteEntries.Add(new RemoteEntry(dir ? "\uE8B7" : "\uE7C3", f[0], size, dir, CombinePath(recs[0], f[0])));   // folder / document glyph
+        }
+        PullStatus = CurrentRemotePath;
+    }
+
+    private static string? ParentPath(string path)
+    {
+        var p = path.TrimEnd('\\');
+        int i = p.LastIndexOf('\\');
+        if (i < 0) return null;
+        if (i == 2 && p[1] == ':') return p[..3];   // "C:\" root — keep the backslash
+        return p[..i];
+    }
+
+    private static string CombinePath(string dir, string name) => dir.TrimEnd('\\') + "\\" + name;
 
     private void OnFrameUpdate(string kind, string payload)
     {

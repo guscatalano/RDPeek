@@ -46,6 +46,10 @@ public sealed class BrokerServer : IDisposable
     /// "frameanomaly", payload is the tab-separated detail.</summary>
     public event Action<string, string>? FrameUpdate;
 
+    /// <summary>Raised (background thread) for a remote directory listing: kind is "filelist" (path +
+    /// entries) or "filelisterror" (path + message).</summary>
+    public event Action<string, string>? FileListUpdate;
+
     public IReadOnlyList<AgentState> Snapshot() => _states.Values.ToList();
 
     /// <summary>Send a command line down to a connected plugin (companion → plugin). pid 0 broadcasts
@@ -115,6 +119,12 @@ public sealed class BrokerServer : IDisposable
                 if (kind is "framestats" or "frameanomaly")
                 {
                     FrameUpdate?.Invoke(kind, payload);
+                    continue;
+                }
+
+                if (kind is "filelist" or "filelisterror")
+                {
+                    FileListUpdate?.Invoke(kind, payload);
                     continue;
                 }
 

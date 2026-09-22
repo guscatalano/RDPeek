@@ -47,12 +47,49 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
 
     /// <summary>Handle a companion → plugin command. Currently the file pull: pull a remote file over
     /// this channel and write it locally, reporting progress and completion back over the broker.</summary>
+    private string _defaultRoot = "";
+
     private void OnCommand(string line)
     {
-        if (Broker.Parse(line) is not { } cmd || cmd.kind != "pull") return;
-        var parts = cmd.payload.Split('\t');
-        if (parts.Length < 2) return;
-        _ = RunPullAsync(parts[0], parts[1]);
+        if (Broker.Parse(line) is not { } cmd) return;
+        if (cmd.kind == "pull")
+        {
+            var parts = cmd.payload.Split('\t');
+            if (parts.Length >= 2) _ = RunPullAsync(parts[0], parts[1]);
+        }
+        else if (cmd.kind == "list")
+        {
+            _ = RunListAsync(cmd.payload);
+        }
+    }
+
+    /// <summary>List a remote directory (FileListRequest) and report the entries to the companion.
+    /// An empty path lists the agent's first advertised file root.</summary>
+    private async Task RunListAsync(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) path = _defaultRoot;
+        try
+        {
+            var reply = await _router.RequestAsync(new Envelope { FileListRequest = new FileListRequest { Path = path } }, _cts.Token);
+            if (reply.BodyCase == Envelope.BodyOneofCase.FileList)
+            {
+                var fl = reply.FileList;
+                // Single line for the broker: path <RS> name<US>d|f<US>size <RS> ...
+                var sb = new System.Text.StringBuilder(fl.Path);
+                foreach (var it in fl.Items)
+                    sb.Append('\x1e').Append(it.Name).Append('\x1f').Append(it.IsDir ? 'd' : 'f').Append('\x1f').Append(it.Size);
+                Broker.Send(Broker.Format("filelist", Environment.ProcessId, _seq, sb.ToString()));
+            }
+            else
+            {
+                var msg = reply.BodyCase == Envelope.BodyOneofCase.Error ? reply.Error.Message : reply.BodyCase.ToString();
+                Broker.Send(Broker.Format("filelisterror", Environment.ProcessId, _seq, $"{path}\t{msg}"));
+            }
+        }
+        catch (Exception ex)
+        {
+            Broker.Send(Broker.Format("filelisterror", Environment.ProcessId, _seq, $"{path}\t{ex.Message}"));
+        }
     }
 
     private async Task RunPullAsync(string remotePath, string localDest)
@@ -177,8 +214,11 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
                 Hello = new Hello { ProtocolVersion = 1, ClientBuild = "rdpeek-plugin/0.1" },
             });
             if (caps?.BodyCase == Envelope.BodyOneofCase.Capabilities)
+            {
+                _defaultRoot = caps.Capabilities.FileRoots.FirstOrDefault() ?? "";
                 Logger.Log($"agent capabilities: build={caps.Capabilities.AgentBuild} " +
                            $"sysinfo={caps.Capabilities.Sysinfo} processes={caps.Capabilities.ProcessList}");
+            }
             else
                 Logger.Log($"unexpected reply to Hello: {caps?.BodyCase.ToString() ?? "none"}");
 

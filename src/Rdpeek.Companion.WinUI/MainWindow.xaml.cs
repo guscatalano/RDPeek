@@ -27,4 +27,10 @@ public sealed partial class MainWindow : Window
         FilesView.Visibility = tag == "files" ? Visibility.Visible : Visibility.Collapsed;
         FramesView.Visibility = tag == "frames" ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    private void OnEntryClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is RemoteEntry entry && Vm.OpenEntryCommand.CanExecute(entry))
+            Vm.OpenEntryCommand.Execute(entry);
+    }
 }
