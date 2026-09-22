@@ -218,7 +218,9 @@ public partial class MainViewModel : ObservableObject
     public MainViewModel(DispatcherQueue dispatcher)
     {
         _dispatcher = dispatcher;
-        _broker.Changed += () => _dispatcher.TryEnqueue(() => { _lastAgentUpdate = DateTime.UtcNow; Refresh(); });
+        // Just stamp freshness on each push; the 1s timer does the (heavy) Refresh. With several
+        // connections each pushing a few times a second, refreshing per-push churned the UI.
+        _broker.Changed += () => _dispatcher.TryEnqueue(() => _lastAgentUpdate = DateTime.UtcNow);
         _broker.PullUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnPullUpdate(kind, payload));
         _broker.FrameUpdate += (pid, seq, kind, payload) => _dispatcher.TryEnqueue(() => OnFrameUpdate(pid, seq, kind, payload));
         _broker.FileListUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnFileList(kind, payload));

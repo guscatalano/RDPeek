@@ -11,6 +11,7 @@ internal sealed class FakeAgentData : IAgentData
 {
     private readonly string _host;
     private readonly Persona _p;
+    private readonly int _idx;
 
     /// <summary>
     /// <paramref name="host"/> becomes the reported HostName (so a viewer can correlate this agent to
@@ -23,7 +24,8 @@ internal sealed class FakeAgentData : IAgentData
         var lastNum = new string(_host.Split('.', '-', '_').LastOrDefault(s => s.Any(char.IsDigit))?
             .Where(char.IsDigit).ToArray() ?? Array.Empty<char>());
         int seed = int.TryParse(lastNum, out var v) ? v : _host.Sum(c => c);
-        _p = Personas[Math.Abs(seed) % Personas.Length];
+        _idx = Math.Abs(seed) % Personas.Length;
+        _p = Personas[_idx];
     }
 
     private sealed record Persona(
@@ -63,16 +65,29 @@ internal sealed class FakeAgentData : IAgentData
     public ProcessList Processes(bool allSessions)
     {
         var list = new ProcessList();
+        double load = _p.Load;
         void P(uint pid, uint sess, string img, string user, ulong ws) =>
-            list.Processes.Add(new ProcessList.Types.Proc { Pid = pid, SessionId = sess, ImageName = img, UserName = user, WorkingSet = ws });
+            list.Processes.Add(new ProcessList.Types.Proc
+            {
+                Pid = pid, SessionId = sess, ImageName = img, UserName = user, WorkingSet = (ulong)(ws * load),
+            });
         P(4, 0, "System", "SYSTEM", 148_000);
         P(732, 0, "svchost.exe", "SYSTEM", 62_000_000);
-        P(1120, 0, "sqlservr.exe", "CONTOSO\\svc-sql", 4_820_000_000);
-        P(2044, 0, "w3wp.exe", "CONTOSO\\svc-app", 1_240_000_000);
         P(2200, 2, "explorer.exe", "CONTOSO\\svc-app", 96_000_000);
         P(3312, 2, "powershell.exe", "CONTOSO\\svc-app", 88_000_000);
         P(3760, 0, "MsMpEng.exe", "SYSTEM", 210_000_000);
         P(4880, 2, "rdpeek-agent.exe", "CONTOSO\\svc-app", 34_000_000);
+        // The workload that defines each host — so switching connections shows a different top process.
+        switch (_idx)
+        {
+            case 0: P(1120, 0, "sqlservr.exe", "NT SERVICE\\MSSQLSERVER", 4_820_000_000);
+                    P(1460, 0, "SQLAGENT.EXE", "NT SERVICE\\SQLAgent", 210_000_000); break;
+            case 1: P(2044, 0, "w3wp.exe", "IIS APPPOOL\\App", 1_240_000_000);
+                    P(2620, 0, "dotnet.exe", "CONTOSO\\svc-web", 980_000_000);
+                    P(2900, 0, "nginx.exe", "CONTOSO\\svc-web", 42_000_000); break;
+            default: P(5120, 2, "devenv.exe", "CONTOSO\\svc-app", 1_760_000_000);
+                     P(5320, 2, "node.exe", "CONTOSO\\svc-app", 320_000_000); break;
+        }
         return list;
     }
 
@@ -153,42 +168,59 @@ internal sealed class FakeAgentData : IAgentData
 
     public SystemDetail SystemDetail()
     {
+        // Per-persona branch + a distinct uptime, so switching connections shows a different host.
+        string[] branch = { "fe_release.210507-1500", "rs5_release.180914-1434", "ni_release.220506-1250" };
+        long uptime = (long)((6 + _idx * 5) * 24 * 3600 * 1000L + 3 * 3600 * 1000L);
         var d = new SystemDetail
         {
-            BuildLabEx = "20348.1.amd64fre.fe_release.210507-1500",
-            BuildLab = "20348.fe_release.210507-1500",
-            EditionId = "ServerDatacenter",
-            DisplayVersion = "21H2",
-            InstallDate = "2024-11-03",
+            BuildLabEx = $"{_p.Build}.{Math.Max(1, _p.Ubr % 100)}.amd64fre.{branch[_idx]}",
+            BuildLab = $"{_p.Build}.{branch[_idx]}",
+            EditionId = _p.Edition,
+            DisplayVersion = _p.DisplayVer,
+            InstallDate = new[] { "2024-11-03", "2023-06-19", "2025-02-09" }[_idx],
             RegisteredOwner = "Contoso IT",
-            BootTimeTicks = (DateTime.UtcNow - TimeSpan.FromMilliseconds(9L * 24 * 3600 * 1000 + 4 * 3600 * 1000)).Ticks,
-            UptimeMs = 9L * 24 * 3600 * 1000 + 4 * 3600 * 1000,
+            BootTimeTicks = (DateTime.UtcNow - TimeSpan.FromMilliseconds(uptime)).Ticks,
+            UptimeMs = uptime,
         };
+
         void H(string id, string desc, string on) =>
             d.Hotfixes.Add(new SystemDetail.Types.Hotfix { HotfixId = id, Description = desc, InstalledOn = on });
-        H("KB5031364", "Security Update", "9/12/2025");
-        H("KB5030216", "Update", "8/14/2025");
-        H("KB5028171", "Security Update", "7/10/2025");
-        H("KB5027225", "Servicing Stack Update", "6/13/2025");
-
-        d.Gpus.Add(new SystemDetail.Types.Gpu
-        {
-            Name = "Microsoft Hyper-V Video", DriverVersion = "10.0.20348.1", DriverDate = "2021-05-07",
-            VramBytes = 8UL * 1024 * 1024, Status = "OK",
-        });
-        d.Gpus.Add(new SystemDetail.Types.Gpu
-        {
-            Name = "NVIDIA A16-4Q (vGPU)", DriverVersion = "537.13", DriverDate = "2025-08-22",
-            VramBytes = 4UL * 1024 * 1024 * 1024, Status = "OK",
-        });
-
+        void Gpu(string name, string ver, string date, ulong vram, string status = "OK") =>
+            d.Gpus.Add(new SystemDetail.Types.Gpu { Name = name, DriverVersion = ver, DriverDate = date, VramBytes = vram, Status = status });
         void P(string name, string cls, string status, string problem) =>
             d.Devices.Add(new SystemDetail.Types.PnpDevice { Name = name, DeviceClass = cls, Status = status, Problem = problem });
-        P("Microsoft Hyper-V Network Adapter", "Net", "OK", "");
-        P("NVIDIA A16-4Q", "Display", "OK", "");
-        P("Generic PnP Monitor", "Monitor", "OK", "");
-        P("Intel 82574L Gigabit Network", "Net", "Error", "CM_PROB 28: drivers not installed");
+
+        // Shared devices, then persona-specific updates / GPU / a problem device.
         P("Remote Desktop Device Redirector Bus", "System", "OK", "");
+        P("Generic PnP Monitor", "Monitor", "OK", "");
+
+        switch (_idx)
+        {
+            case 0:  // SQL box — Hyper-V, healthy
+                H("KB5031364", "Security Update", "9/12/2025");
+                H("KB5030216", "Update", "8/14/2025");
+                H("KB5027225", "Servicing Stack Update", "6/13/2025");
+                Gpu("Microsoft Hyper-V Video", "10.0.20348.1", "2021-05-07", 8UL * 1024 * 1024);
+                P("Microsoft Hyper-V Network Adapter", "Net", "OK", "");
+                P("Microsoft Storage Spaces Controller", "SCSIAdapter", "OK", "");
+                break;
+            case 1:  // Web box — vGPU, a broken NIC
+                H("KB5029263", "Security Update", "9/13/2025");
+                H("KB5028168", "Update", "8/09/2025");
+                Gpu("NVIDIA A16-4Q (vGPU)", "537.13", "2025-08-22", 4UL * 1024 * 1024 * 1024);
+                P("NVIDIA A16-4Q", "Display", "OK", "");
+                P("Intel(R) 82574L Gigabit Network", "Net", "Error", "CM_PROB 28: drivers not installed");
+                break;
+            default: // Workstation — iGPU + DisplayLink, all OK
+                H("KB5034123", "Security Update", "9/10/2025");
+                H("KB5033375", "Cumulative Update", "8/13/2025");
+                H("KB5032190", "Update", "7/09/2025");
+                H("KB5031354", "Servicing Stack Update", "6/11/2025");
+                Gpu("Intel(R) Iris(R) Xe Graphics", "31.0.101.5081", "2025-07-30", 2UL * 1024 * 1024 * 1024);
+                Gpu("DisplayLink USB Device", "11.4.5919.0", "2025-05-14", 0);
+                P("Realtek USB GbE Family Controller", "Net", "OK", "");
+                break;
+        }
         return d;
     }
 
