@@ -61,10 +61,17 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _linkNote = "";
     [ObservableProperty] private string _status = "Starting…";
 
+    // File pull (dashboard → plugin → agent → local disk).
+    [ObservableProperty] private string _remotePath = "";
+    [ObservableProperty] private string _localDest = "";
+    [ObservableProperty] private double _pullProgress;      // 0..100
+    [ObservableProperty] private string _pullStatus = "Pull a file from the remote session onto this machine.";
+
     public MainViewModel(DispatcherQueue dispatcher)
     {
         _dispatcher = dispatcher;
         _broker.Changed += () => _dispatcher.TryEnqueue(Refresh);
+        _broker.PullUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnPullUpdate(kind, payload));
         _broker.Start();
 
         _timer = _dispatcher.CreateTimer();
@@ -76,6 +83,57 @@ public partial class MainViewModel : ObservableObject
     }
 
     partial void OnSelectedConnectionChanged(ConnectionRow? value) => UpdateDetails();
+
+    partial void OnRemotePathChanged(string value)
+    {
+        // Auto-fill a sensible local destination (Downloads\<leaf>) when the user hasn't set one.
+        if (string.IsNullOrWhiteSpace(LocalDest) && !string.IsNullOrWhiteSpace(value))
+        {
+            var leaf = value.Replace('/', '\\').TrimEnd('\\');
+            leaf = leaf[(leaf.LastIndexOf('\\') + 1)..];
+            if (leaf.Length > 0)
+                LocalDest = System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", leaf);
+        }
+    }
+
+    [RelayCommand]
+    private void Pull()
+    {
+        var st = SelectedConnection?.State ?? Connections.Select(c => c.State).FirstOrDefault(s => s?.Status == "connected");
+        if (st is null || st.Status != "connected") { PullStatus = "No connected agent to pull from."; return; }
+        if (string.IsNullOrWhiteSpace(RemotePath) || string.IsNullOrWhiteSpace(LocalDest))
+        { PullStatus = "Enter a remote path and a local destination."; return; }
+
+        if (_broker.SendCommand(st.Pid, Broker.Format("pull", 0, 0, $"{RemotePath}\t{LocalDest}")))
+        {
+            PullProgress = 0;
+            PullStatus = $"Pulling {RemotePath} …";
+        }
+        else
+        {
+            PullStatus = "Couldn't reach the plugin (is the agent connected?).";
+        }
+    }
+
+    private void OnPullUpdate(string kind, string payload)
+    {
+        var p = payload.Split('\t');
+        if (kind == "pullprogress" && p.Length >= 2 &&
+            long.TryParse(p[0], out var written) && long.TryParse(p[1], out var total))
+        {
+            PullProgress = total > 0 ? Math.Min(100, written * 100.0 / total) : 0;
+            PullStatus = $"Pulling… {Bytes((ulong)written)}{(total > 0 ? " / " + Bytes((ulong)total) : "")}";
+        }
+        else if (kind == "pulldone" && p.Length >= 3)
+        {
+            bool ok = p[0] == "1";
+            PullProgress = ok ? 100 : PullProgress;
+            PullStatus = ok
+                ? $"Saved {Bytes(ulong.TryParse(p[1], out var b) ? b : 0)} to {p[2]}"
+                : $"Failed: {(p.Length > 3 ? p[3] : "unknown error")}";
+        }
+    }
 
     [RelayCommand]
     private void CopyInstall()

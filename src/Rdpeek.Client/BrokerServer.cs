@@ -38,6 +38,10 @@ public sealed class BrokerServer : IDisposable
     /// <summary>Raised (on a background thread) whenever a plugin reports a change.</summary>
     public event Action? Changed;
 
+    /// <summary>Raised (background thread) for a file-pull update from the plugin: kind is
+    /// "pullprogress" or "pulldone", payload is the tab-separated detail.</summary>
+    public event Action<string, string>? PullUpdate;
+
     public IReadOnlyList<AgentState> Snapshot() => _states.Values.ToList();
 
     /// <summary>Send a command line down to a connected plugin (companion → plugin). pid 0 broadcasts
@@ -95,6 +99,12 @@ public sealed class BrokerServer : IDisposable
                 {
                     _states.TryRemove(key, out _);
                     Changed?.Invoke();
+                    continue;
+                }
+
+                if (kind is "pullprogress" or "pulldone")
+                {
+                    PullUpdate?.Invoke(kind, payload);
                     continue;
                 }
 
