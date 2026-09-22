@@ -9,6 +9,7 @@ using Rdpeek.Agent;
 //   rdpeek-agent selftest   Run the collectors locally and print the snapshot (no DVC).
 //   rdpeek-agent serve      Open the DVC channel and serve (requires a live RDP session).
 //   rdpeek-agent dvcwatch   Live per-channel traffic table in the console (no DVC).
+//   rdpeek-agent serve-tcp  Serve the agent over TCP (for a mock RDP server to bridge to).
 //
 // selftest exists so the real collectors can be verified anywhere, and so the viewer
 // can be developed without a deployed agent.
@@ -28,14 +29,30 @@ switch (command)
         // --file-root <path> (repeatable) confines file PULL; defaults to %TEMP%.
         return ServeLoop.Run(ParseFileRoots(args));
 
+    case "serve-tcp":
+        // Serves the same AgentCore over a TCP socket, so a mock RDP server can bridge its
+        // diagnostics DVC to it and drive the real agent. `serve-tcp <port>` (default 9999).
+        return ServeTcp.Run(ParsePort(args, 9999), ParseFileRoots(args));
+
     case "dvcwatch":
         // Standalone per-DVC traffic monitor — the RDP_DVC_Watcher tool this grew from,
         // now reading whichever source is available. Run it on the session host.
         return RunDvcWatch(args.Contains("--etw"));
 
     default:
-        Console.Error.WriteLine($"Unknown command '{command}'. Use: selftest | serve | dvcwatch");
+        Console.Error.WriteLine($"Unknown command '{command}'. Use: selftest | serve | serve-tcp | dvcwatch");
         return 64;
+}
+
+// Port from the first bare numeric arg or --port <n>, else the default.
+static int ParsePort(string[] args, int fallback)
+{
+    for (int i = 0; i < args.Length; i++)
+    {
+        if (args[i] == "--port" && i + 1 < args.Length && int.TryParse(args[i + 1], out var p)) return p;
+        if (i > 0 && int.TryParse(args[i], out var bare) && bare is > 0 and < 65536) return bare;
+    }
+    return fallback;
 }
 
 // File-PULL roots from --file-root <path> (repeatable). Default: the session's %TEMP%, where logs
