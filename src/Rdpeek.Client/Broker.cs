@@ -190,7 +190,10 @@ public static class Broker
             // anything. Only pay for a real connect attempt once the pipe actually exists.
             if (!File.Exists(PipePath)) return false;
 
-            var candidate = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut);
+            // Asynchronous is required now the pipe is full-duplex: the background command reader and
+            // the telemetry writer run concurrently on the same handle, which would otherwise serialise
+            // (a blocking ReadLine would stall writes).
+            var candidate = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
             try
             {
                 candidate.Connect(ConnectTimeoutMs);

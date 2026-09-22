@@ -34,6 +34,7 @@
                 <muxc:NavigationViewItem Content="DVC traffic" Tag="dvc" />
                 <muxc:NavigationViewItem Content="Link" Tag="link" />
                 <muxc:NavigationViewItem Content="Files" Tag="files" />
+                <muxc:NavigationViewItem Content="Frames" Tag="frames" />
             </muxc:NavigationView.MenuItems>
 
             <Grid Margin="0,12,0,0">
@@ -305,6 +306,55 @@
                                             <TextBlock Grid.Column="0" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
                                             <TextBlock Grid.Column="1" Text="{x:Bind Value}" FontFamily="Consolas" />
                                             <TextBlock Grid.Column="2" Text="{x:Bind Instance}" Opacity="0.7" TextTrimming="CharacterEllipsis" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- ===================== FRAMES ===================== -->
+                <Grid x:Name="FramesView" Visibility="Collapsed">
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Margin="12,10,12,2" Opacity="0.8" TextWrapping="Wrap"
+                                       Text="The frame inspector taps every [len][Envelope] frame on the diagnostics channel and flags malformed ones — bad length prefixes, undecodable payloads, empty bodies, out-of-order request ids." />
+                            <TextBlock Grid.Row="1" Margin="12,2,12,8" FontFamily="Consolas"
+                                       Text="{x:Bind Vm.FrameStats, Mode=OneWay}" />
+                            <Grid Grid.Row="2" Padding="12,4" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="0.14*" /><ColumnDefinition Width="0.10*" />
+                                    <ColumnDefinition Width="0.22*" /><ColumnDefinition Width="0.54*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Time" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="1" Text="Dir" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="2" Text="Message" FontWeight="SemiBold" />
+                                <TextBlock Grid.Column="3" Text="Anomaly" FontWeight="SemiBold" />
+                            </Grid>
+                            <ListView Grid.Row="2" Margin="0,32,0,0" ItemsSource="{x:Bind Vm.FrameAnomalies}" SelectionMode="None">
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="ListViewItem">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Padding" Value="12,4" /><Setter Property="MinHeight" Value="0" />
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="local:FrameAnomalyRow">
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="0.14*" /><ColumnDefinition Width="0.10*" />
+                                                <ColumnDefinition Width="0.22*" /><ColumnDefinition Width="0.54*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{x:Bind Time}" FontFamily="Consolas" Opacity="0.7" />
+                                            <TextBlock Grid.Column="1" Text="{x:Bind Direction}" />
+                                            <TextBlock Grid.Column="2" Text="{x:Bind Type}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="3" Text="{x:Bind Detail}" TextWrapping="Wrap"
+                                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
                                         </Grid>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>

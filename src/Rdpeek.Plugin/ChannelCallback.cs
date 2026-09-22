@@ -88,12 +88,41 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
         }
     }
 
+    private readonly FrameInspector _inspector = new();
+    private readonly object _tapLock = new();
+    private long _framesIn, _framesOut, _frameAnomalies;
+
+    /// <summary>Tap raw channel bytes into the frame inspector (both directions), surfacing per-frame
+    /// anomalies to the companion immediately. The inspector isn't thread-safe and the two directions
+    /// run on different threads, so serialise.</summary>
+    private void Tap(string direction, byte[] bytes)
+    {
+        try
+        {
+            IReadOnlyList<FrameRecord> recs;
+            lock (_tapLock) recs = _inspector.Push(direction, bytes);
+            foreach (var r in recs)
+            {
+                if (direction == "in") Interlocked.Increment(ref _framesIn);
+                else Interlocked.Increment(ref _framesOut);
+                if (r.Anomalies.Count > 0)
+                {
+                    Interlocked.Increment(ref _frameAnomalies);
+                    Broker.Send(Broker.Format("frameanomaly", Environment.ProcessId, _seq,
+                        $"{r.Direction}\t{r.BodyCase}\t{string.Join("; ", r.Anomalies)}"));
+                }
+            }
+        }
+        catch { /* a diagnostic tap must never disturb the channel */ }
+    }
+
     private void WriteEnvelope(Envelope env)
     {
         var frame = Frame.Encode(env);
         int hr = _channel.Write((uint)frame.Length, frame, IntPtr.Zero);
         if (hr < 0) { Logger.Log($"channel Write failed 0x{hr:X8}"); return; }
         Interlocked.Add(ref _bytesSent, frame.Length);
+        Tap("out", frame);
     }
 
     /// <summary>
@@ -190,6 +219,10 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
                 await MeasureRttAsync();
                 Push("link", LinkStats());
 
+                // Frame-inspector stats for the companion's Frames view.
+                Broker.Send(Broker.Format("framestats", Environment.ProcessId, _seq,
+                    $"{Interlocked.Read(ref _framesIn)}\t{Interlocked.Read(ref _framesOut)}\t{Interlocked.Read(ref _frameAnomalies)}"));
+
                 // Every 3rd cycle (~9s): sessions + services (change slowly, bigger payloads).
                 if (cycle % 3 == 0)
                 {
@@ -234,6 +267,7 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
             var buf = new byte[cbSize];
             Marshal.Copy(pBuffer, buf, 0, (int)cbSize);
             Interlocked.Add(ref _bytesReceived, cbSize);
+            Tap("in", buf);
             foreach (var env in _decoder.PushEnvelopes(buf))
                 _router.Handle(env);
         }

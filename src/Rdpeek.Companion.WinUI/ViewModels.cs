@@ -35,6 +35,9 @@ public sealed record DvcRow(string Name, string Sent, string Received, string Se
 /// <summary>One RemoteFX link/graphics counter, as Windows names it.</summary>
 public sealed record LinkRow(string Name, string Value, string Instance);
 
+/// <summary>A flagged frame the inspector saw on the channel.</summary>
+public sealed record FrameAnomalyRow(string Time, string Direction, string Type, string Detail);
+
 public partial class MainViewModel : ObservableObject
 {
     private const string InstallCommand =
@@ -67,11 +70,16 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private double _pullProgress;      // 0..100
     [ObservableProperty] private string _pullStatus = "Pull a file from the remote session onto this machine.";
 
+    // Frame inspector.
+    [ObservableProperty] private string _frameStats = "No frames tapped yet — connect an agent.";
+    public ObservableCollection<FrameAnomalyRow> FrameAnomalies { get; } = new();
+
     public MainViewModel(DispatcherQueue dispatcher)
     {
         _dispatcher = dispatcher;
         _broker.Changed += () => _dispatcher.TryEnqueue(Refresh);
         _broker.PullUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnPullUpdate(kind, payload));
+        _broker.FrameUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnFrameUpdate(kind, payload));
         _broker.Start();
 
         _timer = _dispatcher.CreateTimer();
@@ -132,6 +140,20 @@ public partial class MainViewModel : ObservableObject
             PullStatus = ok
                 ? $"Saved {Bytes(ulong.TryParse(p[1], out var b) ? b : 0)} to {p[2]}"
                 : $"Failed: {(p.Length > 3 ? p[3] : "unknown error")}";
+        }
+    }
+
+    private void OnFrameUpdate(string kind, string payload)
+    {
+        var p = payload.Split('\t');
+        if (kind == "framestats" && p.Length >= 3)
+        {
+            FrameStats = $"{p[0]} frames in · {p[1]} out · {p[2]} anomalies";
+        }
+        else if (kind == "frameanomaly" && p.Length >= 3)
+        {
+            FrameAnomalies.Insert(0, new FrameAnomalyRow(DateTime.Now.ToString("HH:mm:ss"), p[0], p[1], p[2]));
+            while (FrameAnomalies.Count > 200) FrameAnomalies.RemoveAt(FrameAnomalies.Count - 1);
         }
     }
 

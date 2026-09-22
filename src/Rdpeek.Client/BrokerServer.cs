@@ -42,6 +42,10 @@ public sealed class BrokerServer : IDisposable
     /// "pullprogress" or "pulldone", payload is the tab-separated detail.</summary>
     public event Action<string, string>? PullUpdate;
 
+    /// <summary>Raised (background thread) for frame-inspector updates: kind is "framestats" or
+    /// "frameanomaly", payload is the tab-separated detail.</summary>
+    public event Action<string, string>? FrameUpdate;
+
     public IReadOnlyList<AgentState> Snapshot() => _states.Values.ToList();
 
     /// <summary>Send a command line down to a connected plugin (companion → plugin). pid 0 broadcasts
@@ -105,6 +109,12 @@ public sealed class BrokerServer : IDisposable
                 if (kind is "pullprogress" or "pulldone")
                 {
                     PullUpdate?.Invoke(kind, payload);
+                    continue;
+                }
+
+                if (kind is "framestats" or "frameanomaly")
+                {
+                    FrameUpdate?.Invoke(kind, payload);
                     continue;
                 }
 
