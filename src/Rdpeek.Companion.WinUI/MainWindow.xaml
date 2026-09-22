@@ -56,6 +56,8 @@
                 <muxc:NavigationViewItem Content="Sessions" Tag="sess" />
                 <muxc:NavigationViewItem Content="Services" Tag="svc" />
                 <muxc:NavigationViewItem Content="Link" Tag="link" />
+                <muxc:NavigationViewItemHeader Content="Actions" />
+                <muxc:NavigationViewItem Content="Shell" Tag="shell" />
             </muxc:NavigationView.MenuItems>
 
             <Grid Margin="0,12,0,0">
@@ -837,6 +839,40 @@
                                         </DataTemplate>
                                     </ListView.ItemTemplate>
                                 </ListView>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- ===================== SHELL ===================== -->
+                <Grid x:Name="ShellView" Visibility="Collapsed">
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                        <Grid Margin="14" RowSpacing="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" TextWrapping="Wrap" Opacity="0.8"
+                                       Text="{x:Bind Vm.ShellHint, Mode=OneWay}" />
+
+                            <TextBox Grid.Row="1" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+                                     FontFamily="Consolas" FontSize="12" Text="{x:Bind Vm.ShellOutput, Mode=OneWay}"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                     Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" />
+
+                            <Grid Grid.Row="2" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox Grid.Column="0" MinWidth="120" ItemsSource="{x:Bind Vm.ShellKinds}"
+                                          SelectedItem="{x:Bind Vm.SelectedShell, Mode=TwoWay}" IsEnabled="{x:Bind Vm.ShellEnabled, Mode=OneWay}" />
+                                <TextBox Grid.Column="1" x:Name="ShellInputBox" PlaceholderText="command…"
+                                         Text="{x:Bind Vm.ShellInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         IsEnabled="{x:Bind Vm.ShellEnabled, Mode=OneWay}" KeyDown="OnShellInputKey"
+                                         FontFamily="Consolas" />
+                                <Button Grid.Column="2" Content="Run" Command="{x:Bind Vm.RunShellCommand}"
+                                        IsEnabled="{x:Bind Vm.ShellEnabled, Mode=OneWay}" Style="{ThemeResource AccentButtonStyle}" />
                             </Grid>
                         </Grid>
                     </Border>

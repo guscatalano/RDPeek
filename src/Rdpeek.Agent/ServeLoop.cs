@@ -13,10 +13,12 @@ internal static class ServeLoop
 {
     private const string InspectorChannel = "dvc::diag::inspector";
     private static IReadOnlyList<string> _fileRoots = Array.Empty<string>();
+    private static bool _allowShell;
 
-    public static int Run(IReadOnlyList<string> fileRoots)
+    public static int Run(IReadOnlyList<string> fileRoots, bool allowShell = false)
     {
         _fileRoots = fileRoots;
+        _allowShell = allowShell;
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             Logger.Log($"UNHANDLED: {e.ExceptionObject}");
 
@@ -70,7 +72,7 @@ internal static class ServeLoop
             WtsChannel.WriteFrame(h, Frame.Encode(env)); // raw — client's DVC layer delivers as-is
             return Task.CompletedTask;
         });
-        _ = new AgentCore(router, _fileRoots);
+        _ = new AgentCore(router, _fileRoots, allowShell: _allowShell);
 
         var buffer = new byte[64 * 1024];
         while (!stop.IsSet)

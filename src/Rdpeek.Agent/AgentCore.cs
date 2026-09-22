@@ -20,12 +20,14 @@ internal sealed class AgentCore
     private readonly FilePullService? _filePull;
     private readonly IAgentData _data;
     private readonly bool _fake;
+    private readonly bool _allowShell;
 
-    public AgentCore(EnvelopeRouter router, IReadOnlyList<string>? fileRoots = null, IAgentData? data = null)
+    public AgentCore(EnvelopeRouter router, IReadOnlyList<string>? fileRoots = null, IAgentData? data = null, bool allowShell = false)
     {
         _router = router;
         _fake = data is not null and not RealAgentData;
         _data = data ?? new RealAgentData(_sessionId);
+        _allowShell = allowShell;
         _fileRoots = fileRoots ?? Array.Empty<string>();
         // File PULL is served from within the advertised roots only (read-only). No roots => the
         // capability is off and every path is rejected.
@@ -86,6 +88,21 @@ internal sealed class AgentCore
                         env.RequestId);
                     break;
 
+                case Envelope.BodyOneofCase.ShellRequest:
+                    // Gated: refuse cleanly unless the agent was explicitly started with --allow-shell.
+                    if (!_allowShell)
+                        _ = _router.RespondAsync(new Envelope
+                        {
+                            ShellResult = new ShellResult { Allowed = false, Note = "Shell is disabled. Start the agent with --allow-shell to enable it." },
+                        }, env.RequestId);
+                    else
+                        _ = Task.Run(() =>
+                        {
+                            var r = ShellExecutor.Run(env.ShellRequest.Command, env.ShellRequest.Shell, (int)env.ShellRequest.TimeoutMs);
+                            return _router.RespondAsync(new Envelope { ShellResult = r }, env.RequestId);
+                        });
+                    break;
+
                 // Periodic pushes aren't wired yet: any interval is answered one-shot,
                 // which is what the polling viewer asks for.
                 case Envelope.BodyOneofCase.CounterSubscribe:
@@ -130,6 +147,7 @@ internal sealed class AgentCore
             FilePush = false,
             Counters = DvcCounters.Available,    // perfmon counter set, else the ETW fallback
             SystemDetail = true,                 // build / updates / drivers / PnP (read-only)
+            Shell = _allowShell,                 // off unless the agent opted in with --allow-shell
             MaxChunkBytes = 256 * 1024,
         };
         caps.FileRoots.AddRange(_fileRoots);

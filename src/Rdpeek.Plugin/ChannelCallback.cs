@@ -74,6 +74,35 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
         {
             _ = RunEventLogAsync(cmd.payload);
         }
+        else if (cmd.kind == "shell")
+        {
+            int tab = cmd.payload.IndexOf('\t');
+            string sh = tab >= 0 ? cmd.payload[..tab] : "cmd";
+            string command = tab >= 0 ? cmd.payload[(tab + 1)..] : cmd.payload;
+            _ = RunShellAsync(sh, command);
+        }
+    }
+
+    /// <summary>Run a command on the agent (only honoured if the agent was started with --allow-shell)
+    /// and relay the result. Output blobs are base64'd since the broker line protocol is newline-framed.</summary>
+    private async Task RunShellAsync(string shell, string command)
+    {
+        static string B(string s) => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(s ?? ""));
+        try
+        {
+            var reply = await _router.RequestAsync(
+                new Envelope { ShellRequest = new ShellRequest { Command = command, Shell = shell, TimeoutMs = 30_000 } }, _cts.Token);
+            if (reply.BodyCase == Envelope.BodyOneofCase.ShellResult)
+            {
+                var r = reply.ShellResult;
+                Broker.Send(Broker.Format("shell", Environment.ProcessId, _seq,
+                    $"{(r.Allowed ? 1 : 0)}\t{r.ExitCode}\t{B(r.Note)}\t{B(r.Stdout)}\t{B(r.Stderr)}"));
+            }
+        }
+        catch (Exception ex)
+        {
+            Broker.Send(Broker.Format("shell", Environment.ProcessId, _seq, $"0\t0\t{B(ex.Message)}\t{B("")}\t{B("")}"));
+        }
     }
 
     /// <summary>Fetch recent Windows Event Log entries from the agent and relay them to the companion.
@@ -346,7 +375,9 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
             {
                 _defaultRoot = caps.Capabilities.FileRoots.FirstOrDefault() ?? "";
                 Logger.Log($"agent capabilities: build={caps.Capabilities.AgentBuild} " +
-                           $"sysinfo={caps.Capabilities.Sysinfo} processes={caps.Capabilities.ProcessList}");
+                           $"sysinfo={caps.Capabilities.Sysinfo} processes={caps.Capabilities.ProcessList} shell={caps.Capabilities.Shell}");
+                // Let the companion gate features it can't use (e.g. grey out the shell).
+                Broker.Send(Broker.Format("caps", Environment.ProcessId, _seq, caps.Capabilities.Shell ? "shell" : ""));
             }
             else
                 Logger.Log($"unexpected reply to Hello: {caps?.BodyCase.ToString() ?? "none"}");

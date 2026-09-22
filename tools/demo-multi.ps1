@@ -54,8 +54,10 @@ for($i=0; $i -lt $N; $i++){
 
   Write-Host "Connection $($i+1): mstsc $ip`:$port  ->  mock  ->  agent tcp:$tcp (host $name)" -ForegroundColor Cyan
 
+  # --allow-shell is opt-in; enabled here so the Shell tab is demoable. Commands run on THIS machine
+  # (the agents run locally), as your user — the "remote host" name is cosmetic in the sim.
   Start-Process $agent -WindowStyle Minimized -ArgumentList @(
-    'serve-tcp',$tcp,'--fake','--fake-host',$name,'--file-root',$root) | Out-Null
+    'serve-tcp',$tcp,'--fake','--fake-host',$name,'--file-root',$root,'--allow-shell') | Out-Null
 
   Start-Process $mock -WindowStyle Minimized -ArgumentList @(
     '--port',$port,'--desktop',

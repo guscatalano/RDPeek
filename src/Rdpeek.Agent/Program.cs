@@ -27,12 +27,13 @@ switch (command)
         // Opens the DVC channel and serves the collectors. Requires a live RDP
         // session with the RDPeek client plugin listening on the same channel.
         // --file-root <path> (repeatable) confines file PULL; defaults to %TEMP%.
-        return ServeLoop.Run(ParseFileRoots(args));
+        return ServeLoop.Run(ParseFileRoots(args), args.Contains("--allow-shell"));
 
     case "serve-tcp":
         // Serves the same AgentCore over a TCP socket, so a mock RDP server can bridge its
         // diagnostics DVC to it and drive the real agent. `serve-tcp <port>` (default 9999).
-        return ServeTcp.Run(ParsePort(args, 9999), ParseFileRoots(args), args.Contains("--fake"), ParseOption(args, "--fake-host"));
+        return ServeTcp.Run(ParsePort(args, 9999), ParseFileRoots(args), args.Contains("--fake"),
+            ParseOption(args, "--fake-host"), args.Contains("--allow-shell"));
 
     case "dvcwatch":
         // Standalone per-DVC traffic monitor — the RDP_DVC_Watcher tool this grew from,

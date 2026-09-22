@@ -30,6 +30,7 @@ public sealed class BrokerServer : IDisposable
         public CounterSample? Counters;
         public ClientLink? Link;
         public SystemDetail? System;
+        public bool ShellAllowed;
     }
 
     private readonly ConcurrentDictionary<string, AgentState> _states = new();
@@ -57,6 +58,9 @@ public sealed class BrokerServer : IDisposable
 
     /// <summary>Raised (background thread) with a Windows Event Log listing (log name + entries).</summary>
     public event Action<string>? EventLogUpdate;
+
+    /// <summary>Raised (background thread) with the result of a shell command.</summary>
+    public event Action<string>? ShellUpdate;
 
     public IReadOnlyList<AgentState> Snapshot() => _states.Values.ToList();
 
@@ -148,6 +152,12 @@ public sealed class BrokerServer : IDisposable
                     continue;
                 }
 
+                if (kind == "shell")
+                {
+                    ShellUpdate?.Invoke(payload);
+                    continue;
+                }
+
                 var st = _states.GetOrAdd(key, _ => new AgentState { Pid = pid, Seq = seq });
                 switch (kind)
                 {
@@ -187,6 +197,9 @@ public sealed class BrokerServer : IDisposable
                         break;
                     case "system":
                         try { st.System = SystemDetail.Parser.ParseJson(payload); } catch { }
+                        break;
+                    case "caps":
+                        st.ShellAllowed = payload.Contains("shell");
                         break;
                 }
 

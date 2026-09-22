@@ -30,6 +30,7 @@ public sealed partial class MainWindow : Window
         DiagView.Visibility = tag == "diag" ? Visibility.Visible : Visibility.Collapsed;
         SysView.Visibility = tag == "system" ? Visibility.Visible : Visibility.Collapsed;
         EventsView.Visibility = tag == "events" ? Visibility.Visible : Visibility.Collapsed;
+        ShellView.Visibility = tag == "shell" ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnEntryClick(object sender, ItemClickEventArgs e)
@@ -48,6 +49,15 @@ public sealed partial class MainWindow : Window
     {
         if ((sender as FrameworkElement)?.DataContext is BreadcrumbRow b)
             Vm.NavigateCommand.Execute(b.FullPath);
+    }
+
+    private void OnShellInputKey(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Enter && Vm.RunShellCommand.CanExecute(null))
+        {
+            e.Handled = true;
+            Vm.RunShellCommand.Execute(null);
+        }
     }
 
     /// <summary>x:Bind function helper: WinUI has no built-in bool→Visibility converter.</summary>

@@ -87,6 +87,10 @@ message Envelope {
     // -- Windows Event Log (recent entries from a named log) --
     EventLogRequest     event_log_request     = 80;
     EventLogList        event_log             = 81;
+
+    // -- interactive shell (OFF by default; agent must be started with --allow-shell) --
+    ShellRequest        shell_request         = 82;
+    ShellResult         shell_result          = 83;
   }
 }
 
@@ -200,6 +204,24 @@ message SystemDetail {
 }
 
 // ============================================================================
+// Interactive shell — capability-gated, OFF by default (agent --allow-shell)
+// ============================================================================
+
+message ShellRequest {
+  string command    = 1;
+  string shell      = 2;   // "cmd" | "powershell" (default cmd)
+  uint32 timeout_ms = 3;   // agent clamps
+}
+
+message ShellResult {
+  bool   allowed    = 1;   // false when the agent was not started with --allow-shell
+  int32  exit_code  = 2;
+  string stdout     = 3;
+  string stderr     = 4;
+  string note       = 5;   // e.g. "timed out", or why it was refused
+}
+
+// ============================================================================
 // Windows Event Log: the most recent entries from a named log
 // ============================================================================
 
@@ -265,6 +287,7 @@ message Capabilities {
   bool   file_pull        = 14;  // remote -> client
   bool   file_push        = 15;  // client -> remote
   bool   system_detail    = 16;  // build / updates / drivers / PnP devices (read-only)
+  bool   shell            = 17;  // interactive command execution — off unless --allow-shell
 
   // File transfer is confined to these roots (empty => file transfer disabled
   // regardless of file_pull/file_push). Paths outside are rejected by the agent.

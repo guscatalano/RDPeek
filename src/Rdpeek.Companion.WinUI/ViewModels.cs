@@ -232,6 +232,14 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _diagnosticsSummary = "Checking plugin registration…";
     public ObservableCollection<PluginReport> Diagnostics { get; } = new();
 
+    // Interactive shell (only usable when the selected agent advertises the shell capability).
+    public ObservableCollection<string> ShellKinds { get; } = new() { "cmd", "powershell" };
+    [ObservableProperty] private string _selectedShell = "cmd";
+    [ObservableProperty] private string _shellInput = "";
+    [ObservableProperty] private string _shellOutput = "";
+    [ObservableProperty] private bool _shellEnabled;
+    [ObservableProperty] private string _shellHint = "Select a connection whose agent was started with --allow-shell.";
+
     // Windows Event Log viewer.
     public ObservableCollection<EventRow> EventLogEntries { get; } = new();
     public ObservableCollection<string> EventLogNames { get; } = new() { "System", "Application", "Setup" };
@@ -255,6 +263,7 @@ public partial class MainViewModel : ObservableObject
         _broker.FileListUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnFileList(kind, payload));
         _broker.ProbeUpdate += payload => _dispatcher.TryEnqueue(() => OnProbe(payload));
         _broker.EventLogUpdate += payload => _dispatcher.TryEnqueue(() => OnEventLog(payload));
+        _broker.ShellUpdate += payload => _dispatcher.TryEnqueue(() => OnShell(payload));
         _broker.Start();
 
         _timer = _dispatcher.CreateTimer();
@@ -284,6 +293,7 @@ public partial class MainViewModel : ObservableObject
         CurrentRemotePath = "";
         EventLogEntries.Clear();
         EventLogNote = "Pick a log and Refresh to read the remote Event Log.";
+        ShellOutput = "";
     }
 
     partial void OnRemotePathChanged(string value)
@@ -625,6 +635,38 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void RunShell()
+    {
+        var st = ConnectedAgent();
+        if (st is null) { AppendShell("[no connected agent]"); return; }
+        if (!st.ShellAllowed) { AppendShell("[shell is disabled on this agent — start it with --allow-shell]"); return; }
+
+        var cmd = ShellInput.Trim();
+        if (cmd.Length == 0) return;
+        AppendShell($"{SelectedShell}> {cmd}");
+        ShellInput = "";
+        if (!_broker.SendCommand(st.Pid, Broker.Format("shell", st.Pid, st.Seq, $"{SelectedShell}\t{cmd}")))
+            AppendShell("[couldn't reach the plugin]");
+    }
+
+    private void AppendShell(string s) => ShellOutput += (ShellOutput.Length > 0 ? "\n" : "") + s;
+
+    private void OnShell(string payload)
+    {
+        var p = payload.Split('\t');
+        if (p.Length < 5) return;
+        static string D(string b64) { try { return System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(b64)); } catch { return ""; } }
+
+        if (p[0] != "1") { AppendShell("[refused] " + D(p[2])); return; }
+        string so = D(p[3]).TrimEnd(), se = D(p[4]).TrimEnd(), note = D(p[2]);
+        if (so.Length > 0) AppendShell(so);
+        if (se.Length > 0) AppendShell(se);
+        if (note.Length > 0) AppendShell("[" + note + "]");
+        AppendShell($"[exit {p[1]}]");
+        if (ShellOutput.Length > 200_000) ShellOutput = "…(trimmed)\n" + ShellOutput[^150_000..];
+    }
+
+    [RelayCommand]
     private void FetchEventLog()
     {
         var st = ConnectedAgent();
@@ -892,6 +934,13 @@ public partial class MainViewModel : ObservableObject
         UpdateClientMeasured(st?.Link);
         UpdateRttComparison(st?.Counters, st?.Link);
         UpdateSystemDetail(st?.System);
+
+        ShellEnabled = st?.ShellAllowed == true;
+        ShellHint = st is null
+            ? "No connected agent."
+            : st.ShellAllowed
+                ? $"Shell enabled on {(string.IsNullOrEmpty(st.Host) ? "this host" : st.Host)} — commands run as the agent's user in the session."
+                : "Shell is disabled on this agent (read-only). Start the agent with --allow-shell to enable it.";
     }
 
     private void UpdateSystemDetail(SystemDetail? d)
