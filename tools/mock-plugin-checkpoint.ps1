@@ -62,7 +62,7 @@ try {
     # 4. Start the mock, opening the RDPeek diag channels and exporting its cert.
     Write-Host "Starting MockRdp on 127.0.0.1:$Port ..." -ForegroundColor Cyan
     $mockProc = Start-Process -FilePath $mock -PassThru -WindowStyle Hidden -ArgumentList @(
-        '--port', $Port, '--dvc', 'dvc::diag::inspector,dvc::diag::files',
+        '--port', $Port, '--dvc', 'dvc::diag::inspector,dvc::diag::files', '--desktop',
         '--cert-out', $certOut, '--log-file', $mockLog, '--log-level', 'debug')
 
     $up = $false
