@@ -110,6 +110,17 @@ public sealed record DeviceRow(string Name, string Class, string Status, string 
     public Brush StatusBrush => HasProblem ? UiBrushes.Fail : UiBrushes.Muted;
 }
 
+/// <summary>One Windows Event Log entry.</summary>
+public sealed record EventRow(string Level, string Time, string Source, string Id, string Message)
+{
+    public Brush LevelBrush => Level switch
+    {
+        "Error" or "Critical" => UiBrushes.Fail,
+        "Warning" => UiBrushes.Warn,
+        _ => UiBrushes.Muted,
+    };
+}
+
 /// <summary>One decoded field of a frame, flattened for the detail pane. Indent is the tree depth
 /// rendered as a left margin.</summary>
 public sealed record FrameFieldRow(string Text, double Indent)
@@ -221,6 +232,13 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _diagnosticsSummary = "Checking plugin registration…";
     public ObservableCollection<PluginReport> Diagnostics { get; } = new();
 
+    // Windows Event Log viewer.
+    public ObservableCollection<EventRow> EventLogEntries { get; } = new();
+    public ObservableCollection<string> EventLogNames { get; } = new() { "System", "Application", "Setup" };
+    [ObservableProperty] private string _selectedEventLog = "System";
+    [ObservableProperty] private bool _eventLogLoading;
+    [ObservableProperty] private string _eventLogNote = "Pick a log and Refresh to read the remote Event Log.";
+
     // Latency probe (on-demand ping burst on the diagnostics channel).
     [ObservableProperty] private string _probeResult = "Run a burst of pings to measure this channel's latency.";
     [ObservableProperty] private bool _probeRunning;
@@ -236,6 +254,7 @@ public partial class MainViewModel : ObservableObject
         _broker.FrameUpdate += (pid, seq, kind, payload) => _dispatcher.TryEnqueue(() => OnFrameUpdate(pid, seq, kind, payload));
         _broker.FileListUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnFileList(kind, payload));
         _broker.ProbeUpdate += payload => _dispatcher.TryEnqueue(() => OnProbe(payload));
+        _broker.EventLogUpdate += payload => _dispatcher.TryEnqueue(() => OnEventLog(payload));
         _broker.Start();
 
         _timer = _dispatcher.CreateTimer();
@@ -263,6 +282,8 @@ public partial class MainViewModel : ObservableObject
         RemoteEntries.Clear();
         Breadcrumbs.Clear();
         CurrentRemotePath = "";
+        EventLogEntries.Clear();
+        EventLogNote = "Pick a log and Refresh to read the remote Event Log.";
     }
 
     partial void OnRemotePathChanged(string value)
@@ -601,6 +622,40 @@ public partial class MainViewModel : ObservableObject
             double max = Math.Max(vals.DefaultIfEmpty(0).Max(), 0.001);
             foreach (var v in vals) ProbeSamples.Add(new ProbeBar(Math.Max(2, v / max * 40)));
         }
+    }
+
+    [RelayCommand]
+    private void FetchEventLog()
+    {
+        var st = ConnectedAgent();
+        if (st is null) { EventLogNote = "No connected agent to read the Event Log from."; return; }
+        EventLogLoading = true;
+        EventLogNote = $"Reading {SelectedEventLog}…";
+        if (!_broker.SendCommand(st.Pid, Broker.Format("eventlog", st.Pid, st.Seq, $"{SelectedEventLog}\t100")))
+        { EventLogNote = "Couldn't reach the plugin."; EventLogLoading = false; }
+    }
+
+    partial void OnSelectedEventLogChanged(string value) => FetchEventLog();
+
+    private void OnEventLog(string payload)
+    {
+        EventLogLoading = false;
+        var recs = payload.Split('\x1e');
+        var head = recs[0].Split('\x1f');
+        string logName = head[0];
+        string note = head.Length > 1 ? head[1] : "";
+
+        EventLogEntries.Clear();
+        foreach (var r in recs.Skip(1))
+        {
+            var f = r.Split('\x1f');
+            if (f.Length < 5) continue;
+            EventLogEntries.Add(new EventRow(f[0], f[1], f[2], f[3], f[4]));
+        }
+
+        EventLogNote = EventLogEntries.Count > 0
+            ? $"{logName} — {EventLogEntries.Count} most recent entries"
+            : note.Length > 0 ? $"{logName}: {note}" : $"{logName}: no entries";
     }
 
     [RelayCommand]

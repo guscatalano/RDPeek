@@ -83,6 +83,10 @@ message Envelope {
     // -- deep system detail (build, updates, drivers, PnP devices) --
     SystemDetailRequest system_detail_request = 78;
     SystemDetail        system_detail         = 79;
+
+    // -- Windows Event Log (recent entries from a named log) --
+    EventLogRequest     event_log_request     = 80;
+    EventLogList        event_log             = 81;
   }
 }
 
@@ -192,6 +196,28 @@ message SystemDetail {
     string device_class = 2;   // Display | Net | System | ...
     string status      = 3;    // OK | Error | Unknown
     string problem     = 4;    // decoded ConfigManagerErrorCode when != 0
+  }
+}
+
+// ============================================================================
+// Windows Event Log: the most recent entries from a named log
+// ============================================================================
+
+message EventLogRequest {
+  string log_name = 1;   // "System" | "Application" | "Setup" | ...
+  uint32 max      = 2;   // cap on entries returned (agent clamps)
+}
+
+message EventLogList {
+  string log_name = 1;
+  string note     = 2;   // error / status when entries can't be read
+  repeated Entry entries = 3;
+  message Entry {
+    string level    = 1;   // Error | Warning | Information | Critical | Verbose
+    string time     = 2;   // local, formatted
+    string source   = 3;   // provider name
+    uint32 event_id = 4;
+    string message  = 5;   // one-line summary
   }
 }
 

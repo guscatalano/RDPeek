@@ -224,6 +224,42 @@ internal sealed class FakeAgentData : IAgentData
         return d;
     }
 
+    public EventLogList EventLog(string logName, int max)
+    {
+        if (string.IsNullOrWhiteSpace(logName)) logName = "System";
+        var list = new EventLogList { LogName = logName };
+        var now = DateTime.Now;
+        int n = 0;
+        void E(string level, int minsAgo, string source, uint id, string msg) =>
+            list.Entries.Add(new EventLogList.Types.Entry
+            {
+                Level = level,
+                Time = now.AddMinutes(-minsAgo).ToString("yyyy-MM-dd HH:mm:ss"),
+                Source = source, EventId = id, Message = msg,
+            });
+
+        if (logName.Equals("Application", StringComparison.OrdinalIgnoreCase))
+        {
+            E("Information", 2 + n++, "Application Error", 1000, "Faulting application legacyapp.exe, version 3.2.1.0.");
+            E("Warning", 9 + n++, ".NET Runtime", 1026, "Application: worker.exe — unhandled exception, retrying.");
+            E("Information", 14 + n++, "MSSQL$MSSQLSERVER", 17137, "Starting up database 'ReportServer'.");
+            E("Error", 26 + n++, "Application Error", 1000, "Faulting module KERNELBASE.dll — access violation.");
+            E("Information", 41 + n++, "Windows Error Reporting", 1001, "Fault bucket, report queued.");
+        }
+        else
+        {
+            E("Information", 1 + n++, "Service Control Manager", 7036, "The Remote Desktop Services service entered the running state.");
+            E("Warning", 6 + n++, "DCOM", 10016, "The machine-default permission settings do not grant Local Activation.");
+            E("Error", 12 + n++, "disk", 153, "The IO operation at logical block address 0x1a2b was retried.");
+            E("Information", 19 + n++, "Microsoft-Windows-Kernel-Power", 107, "The system has resumed from sleep.");
+            E("Warning", 33 + n++, "TermDD", 56, "The Terminal Server security layer detected an error in the protocol stream.");
+            E("Information", 48 + n++, "Service Control Manager", 7040, "The start type of the Background Intelligent Transfer Service changed.");
+        }
+
+        while (list.Entries.Count > max) list.Entries.RemoveAt(list.Entries.Count - 1);
+        return list;
+    }
+
     // Live-looking per-channel traffic: bytes accumulate across polls, rates jitter ±15%.
     private long _tick;
     private readonly Random _rng = new();

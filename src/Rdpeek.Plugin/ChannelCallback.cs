@@ -70,6 +70,39 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
             int n = int.TryParse(cmd.payload, out var c) ? Math.Clamp(c, 1, 200) : 20;
             _ = RunProbeAsync(n);
         }
+        else if (cmd.kind == "eventlog")
+        {
+            _ = RunEventLogAsync(cmd.payload);
+        }
+    }
+
+    /// <summary>Fetch recent Windows Event Log entries from the agent and relay them to the companion.
+    /// Payload: logName \t max.</summary>
+    private async Task RunEventLogAsync(string payload)
+    {
+        var parts = payload.Split('\t');
+        string log = parts.Length > 0 && parts[0].Length > 0 ? parts[0] : "System";
+        int max = parts.Length > 1 && int.TryParse(parts[1], out var m) ? m : 100;
+        try
+        {
+            var reply = await _router.RequestAsync(
+                new Envelope { EventLogRequest = new EventLogRequest { LogName = log, Max = (uint)max } }, _cts.Token);
+            if (reply.BodyCase == Envelope.BodyOneofCase.EventLog)
+            {
+                var el = reply.EventLog;
+                // logName <US> note <RS> level<US>time<US>source<US>id<US>message <RS> ...
+                var sb = new System.Text.StringBuilder();
+                sb.Append(el.LogName).Append('\x1f').Append(Clean(el.Note));
+                foreach (var e in el.Entries)
+                    sb.Append('\x1e').Append(Clean(e.Level)).Append('\x1f').Append(Clean(e.Time)).Append('\x1f')
+                      .Append(Clean(e.Source)).Append('\x1f').Append(e.EventId).Append('\x1f').Append(Clean(e.Message));
+                Broker.Send(Broker.Format("eventlog", Environment.ProcessId, _seq, sb.ToString()));
+            }
+        }
+        catch (Exception ex)
+        {
+            Broker.Send(Broker.Format("eventlog", Environment.ProcessId, _seq, $"{log}\x1f{ex.Message}"));
+        }
     }
 
     /// <summary>Fire a burst of pings and report the latency distribution — an on-demand channel

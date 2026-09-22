@@ -51,6 +51,7 @@
                 <muxc:NavigationViewItem Content="Diagnostics" Tag="diag" />
                 <muxc:NavigationViewItemHeader Content="Host (via agent)" />
                 <muxc:NavigationViewItem Content="System" Tag="system" />
+                <muxc:NavigationViewItem Content="Event Log" Tag="events" />
                 <muxc:NavigationViewItem Content="Network" Tag="net" />
                 <muxc:NavigationViewItem Content="Sessions" Tag="sess" />
                 <muxc:NavigationViewItem Content="Services" Tag="svc" />
@@ -770,6 +771,74 @@
                                 </ItemsControl>
                             </StackPanel>
                         </ScrollViewer>
+                    </Border>
+                </Grid>
+
+                <!-- ===================== EVENT LOG ===================== -->
+                <Grid x:Name="EventsView" Visibility="Collapsed">
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                        <Grid Margin="14" RowSpacing="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" /><RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Opacity="0.8" TextWrapping="Wrap"
+                                       Text="The most recent Windows Event Log entries from the remote session host, newest first. Read-only; some logs need an elevated agent." />
+
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                <ComboBox MinWidth="160" Header="Log" ItemsSource="{x:Bind Vm.EventLogNames}"
+                                          SelectedItem="{x:Bind Vm.SelectedEventLog, Mode=TwoWay}" />
+                                <Button Command="{x:Bind Vm.FetchEventLogCommand}" VerticalAlignment="Bottom"
+                                        ToolTipService.ToolTip="Re-read this log">
+                                    <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                                </Button>
+                                <ProgressRing IsActive="{x:Bind Vm.EventLogLoading, Mode=OneWay}" Width="18" Height="18" VerticalAlignment="Bottom" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="2" Opacity="0.65" TextWrapping="Wrap" Text="{x:Bind Vm.EventLogNote, Mode=OneWay}" />
+
+                            <Grid Grid.Row="3">
+                                <Grid Padding="12,4,12,0" ColumnSpacing="8" VerticalAlignment="Top">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="0.10*" /><ColumnDefinition Width="0.16*" />
+                                        <ColumnDefinition Width="0.20*" /><ColumnDefinition Width="0.07*" />
+                                        <ColumnDefinition Width="0.47*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Level" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="1" Text="Time" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="2" Text="Source" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="3" Text="ID" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="4" Text="Message" FontWeight="SemiBold" />
+                                </Grid>
+                                <ListView Margin="0,30,0,0" ItemsSource="{x:Bind Vm.EventLogEntries}" SelectionMode="None"
+                                          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6">
+                                    <ListView.ItemContainerStyle>
+                                        <Style TargetType="ListViewItem">
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                            <Setter Property="Padding" Value="10,4" /><Setter Property="MinHeight" Value="0" />
+                                        </Style>
+                                    </ListView.ItemContainerStyle>
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="local:EventRow">
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="0.10*" /><ColumnDefinition Width="0.16*" />
+                                                    <ColumnDefinition Width="0.20*" /><ColumnDefinition Width="0.07*" />
+                                                    <ColumnDefinition Width="0.47*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{x:Bind Level}" Foreground="{x:Bind LevelBrush}" />
+                                                <TextBlock Grid.Column="1" Text="{x:Bind Time}" FontFamily="Consolas" Opacity="0.75" />
+                                                <TextBlock Grid.Column="2" Text="{x:Bind Source}" TextTrimming="CharacterEllipsis" Opacity="0.85" />
+                                                <TextBlock Grid.Column="3" Text="{x:Bind Id}" FontFamily="Consolas" Opacity="0.6" />
+                                                <TextBlock Grid.Column="4" Text="{x:Bind Message}" TextTrimming="CharacterEllipsis" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </Grid>
+                        </Grid>
                     </Border>
                 </Grid>
 

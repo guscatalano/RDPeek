@@ -55,6 +55,9 @@ public sealed class BrokerServer : IDisposable
     /// <summary>Raised (background thread) with the result of a latency probe.</summary>
     public event Action<string>? ProbeUpdate;
 
+    /// <summary>Raised (background thread) with a Windows Event Log listing (log name + entries).</summary>
+    public event Action<string>? EventLogUpdate;
+
     public IReadOnlyList<AgentState> Snapshot() => _states.Values.ToList();
 
     /// <summary>Send a command line down to a connected plugin (companion → plugin). pid 0 broadcasts
@@ -136,6 +139,12 @@ public sealed class BrokerServer : IDisposable
                 if (kind == "probe")
                 {
                     ProbeUpdate?.Invoke(payload);
+                    continue;
+                }
+
+                if (kind == "eventlog")
+                {
+                    EventLogUpdate?.Invoke(payload);
                     continue;
                 }
 

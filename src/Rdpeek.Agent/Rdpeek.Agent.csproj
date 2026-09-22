@@ -20,6 +20,8 @@
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.19" />
     <!-- WMI (Win32_QuickFixEngineering / VideoController / PnPEntity) for deep system detail. -->
     <PackageReference Include="System.Management" Version="8.0.0" />
+    <!-- EventLogReader for the Event Log viewer. -->
+    <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.1" />
   </ItemGroup>
 
 </Project>

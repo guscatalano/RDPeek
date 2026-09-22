@@ -204,4 +204,11 @@ static void RunSelfTest()
         Console.WriteLine($"    !    {Trim(d.Name, 40),-40} {d.Problem}");
     foreach (var n in sd.Notes)
         Console.WriteLine($"    note: {n}");
+
+    Console.WriteLine();
+    Console.WriteLine("== Event Log (System, most recent) ==");
+    var ev = EventLogCollector.Collect("System", 6);
+    if (!string.IsNullOrEmpty(ev.Note)) Console.WriteLine($"  note: {ev.Note}");
+    foreach (var e in ev.Entries)
+        Console.WriteLine($"  {e.Level,-11} {e.Time}  {Trim(e.Source, 28),-28} {e.EventId,5}  {Trim(e.Message, 60)}");
 }

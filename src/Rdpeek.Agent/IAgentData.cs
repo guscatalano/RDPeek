@@ -18,6 +18,7 @@ internal interface IAgentData
     PerfSnapshot Perf();
     CounterSample DvcCounters();
     SystemDetail SystemDetail();
+    EventLogList EventLog(string logName, int max);
 }
 
 /// <summary>Real collectors — the shipped behaviour.</summary>
@@ -31,4 +32,5 @@ internal sealed class RealAgentData(uint sessionId) : IAgentData
     public PerfSnapshot Perf() => PerfCollector.Collect();
     public CounterSample DvcCounters() => Agent.DvcCounters.Snapshot();
     public SystemDetail SystemDetail() => SystemDetailCollector.Collect();
+    public EventLogList EventLog(string logName, int max) => EventLogCollector.Collect(logName, max);
 }

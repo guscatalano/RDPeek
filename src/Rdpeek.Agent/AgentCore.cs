@@ -80,6 +80,12 @@ internal sealed class AgentCore
                     _ = _router.RespondAsync(new Envelope { SystemDetail = _data.SystemDetail() }, env.RequestId);
                     break;
 
+                case Envelope.BodyOneofCase.EventLogRequest:
+                    _ = _router.RespondAsync(
+                        new Envelope { EventLog = _data.EventLog(env.EventLogRequest.LogName, (int)env.EventLogRequest.Max) },
+                        env.RequestId);
+                    break;
+
                 // Periodic pushes aren't wired yet: any interval is answered one-shot,
                 // which is what the polling viewer asks for.
                 case Envelope.BodyOneofCase.CounterSubscribe:
