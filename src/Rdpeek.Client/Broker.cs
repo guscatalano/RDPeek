@@ -1,4 +1,6 @@
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipes;
+using System.Threading.Channels;
 
 namespace Rdpeek.Client;
 
@@ -13,10 +15,58 @@ namespace Rdpeek.Client;
 ///   pid/seq: identify the plugin process + per-connection instance
 ///   payload: host name (status kinds) or single-line JSON (sysinfo/procs)
 /// The payload is the remainder of the line, so it may itself contain '|'.
+///
+/// <para>
+/// <b>Report never blocks.</b> It is called from <c>IWTSPlugin.Initialize</c>,
+/// <c>OnNewChannelConnection</c>, <c>Disconnected</c> and <c>Terminated</c> — all of which
+/// mstsc invokes synchronously across a COM process boundary, so any wait here stalls the
+/// RDP client itself. Report only enqueues; a background sender owns the pipe.
+/// </para>
 /// </summary>
 public static class Broker
 {
     public const string PipeName = "rdpeek-broker";
+
+    // A pipe that does not exist can be ruled out in ~2ms this way. NamedPipeClientStream
+    // .Connect(timeout) cannot: it spins until the timeout expires, because the server may
+    // still show up. That behaviour is what used to hang mstsc for 500ms per report.
+    private const string PipePath = @"\\.\pipe\" + PipeName;
+
+    private const int ConnectTimeoutMs = 50;     // only reached when the pipe already exists
+    private const int MinRetryMs = 250;
+    private const int MaxRetryMs = 5_000;
+    private const int QueueCapacity = 256;
+
+    // DropOldest: if the companion is away, stale telemetry is worth less than staying
+    // bounded. Fresh data follows within one poll cycle once it reconnects.
+    private static readonly Channel<string> Queue = Channel.CreateBounded<string>(
+        new BoundedChannelOptions(QueueCapacity)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            SingleWriter = false,
+        });
+
+    private static int _senderStarted;
+
+    /// <summary>Raised for each command line the companion sends down (companion → plugin), e.g. a
+    /// file-pull request. The pipe is full-duplex: the sender owns writing, a reader raises this.</summary>
+    public static event Action<string>? CommandReceived;
+
+    private static CancellationTokenSource? _readerCts;
+
+    /// <summary>Send a line back to the companion out-of-band (e.g. file-pull progress). Best-effort;
+    /// rides the same queue as telemetry so it never blocks a caller.</summary>
+    public static void Send(string line)
+    {
+        try { EnsureSenderStarted(); Queue.Writer.TryWrite(line); } catch { }
+    }
+
+    /// <summary>
+    /// Latest connection-status line, replayed whenever the pipe is (re)established so a
+    /// companion started after the RDP connection still sees the right state.
+    /// </summary>
+    private static volatile string? _lastStatus;
 
     public static string Format(string kind, int pid, int seq, string payload = "")
         => $"{kind}|{pid}|{seq}|{payload}";
@@ -31,26 +81,172 @@ public static class Broker
         return (parts[0], pid, seq, payload);
     }
 
-    /// <summary>Best-effort one-shot report to the companion. No-op if it isn't running.</summary>
+    /// <summary>
+    /// Best-effort report to the companion. Returns immediately — never connects, never
+    /// waits, never throws. No-op in effect if the companion isn't running.
+    /// </summary>
     public static void Report(string ev, int pid, int seq, string host = "")
     {
         try
         {
-            using var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.Out);
-            pipe.Connect(500);
-            using var writer = new StreamWriter(pipe) { AutoFlush = true };
-            writer.WriteLine(Format(ev, pid, seq, host));
+            string line = Format(ev, pid, seq, host);
+            if (IsStatus(ev)) _lastStatus = line;
+
+            EnsureSenderStarted();
+            Queue.Writer.TryWrite(line); // bounded + DropOldest, so this cannot block
         }
-        catch (Exception ex)
+        catch
         {
-            // Best-effort — but log why, so a silently-dropped report can be diagnosed.
+            // Reporting is diagnostics; it must never disturb a COM callback.
+        }
+    }
+
+    private static bool IsStatus(string ev)
+        => ev is "listening" or "connected" or "gone";
+
+    private static void EnsureSenderStarted()
+    {
+        if (Interlocked.Exchange(ref _senderStarted, 1) == 0)
+        {
+            _ = Task.Run(SendLoopAsync);
+        }
+    }
+
+    private static async Task SendLoopAsync()
+    {
+        StreamWriter? writer = null;
+        NamedPipeClientStream? pipe = null;
+        int retryMs = MinRetryMs;
+
+        while (true)
+        {
             try
             {
-                File.AppendAllText(
-                    System.IO.Path.Combine(System.IO.Path.GetTempPath(), "rdpeek-brokerclient.log"),
-                    $"{DateTime.Now:HH:mm:ss.fff}  report '{ev}' failed: {ex.GetType().Name}: {ex.Message}{Environment.NewLine}");
+                // Connected: sleep until there is something to send. Disconnected: also wake
+                // on the retry timer, so a companion that starts later gets picked up even
+                // when this plugin has nothing new to say.
+                using (var wake = writer is null ? new CancellationTokenSource(retryMs) : null)
+                {
+                    try
+                    {
+                        await Queue.Reader.WaitToReadAsync(wake?.Token ?? CancellationToken.None)
+                                          .ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // retry tick, not an error
+                    }
+                }
+
+                if (writer is null)
+                {
+                    if (TryConnect(out pipe, out writer))
+                    {
+                        retryMs = MinRetryMs;
+
+                        // Re-announce state to a companion that missed the original report.
+                        var status = _lastStatus;
+                        if (status is not null && !TryWrite(writer, status))
+                        {
+                            Disconnect(ref pipe, ref writer);
+                        }
+                    }
+                    else
+                    {
+                        retryMs = Math.Min(retryMs * 2, MaxRetryMs);
+                    }
+                }
+
+                while (Queue.Reader.TryRead(out var line))
+                {
+                    // Companion away: drop rather than hold the line. The poll loop resends
+                    // fresh data every few seconds, and status is replayed on reconnect.
+                    if (writer is null) continue;
+
+                    if (!TryWrite(writer, line))
+                    {
+                        Disconnect(ref pipe, ref writer);
+                    }
+                }
             }
-            catch { }
+            catch
+            {
+                Disconnect(ref pipe, ref writer);
+                retryMs = Math.Min(retryMs * 2, MaxRetryMs);
+            }
         }
+    }
+
+    private static bool TryConnect(
+        [NotNullWhen(true)] out NamedPipeClientStream? pipe,
+        [NotNullWhen(true)] out StreamWriter? writer)
+    {
+        pipe = null;
+        writer = null;
+
+        try
+        {
+            // The cheap negative check — this is what keeps a missing companion from costing
+            // anything. Only pay for a real connect attempt once the pipe actually exists.
+            if (!File.Exists(PipePath)) return false;
+
+            var candidate = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut);
+            try
+            {
+                candidate.Connect(ConnectTimeoutMs);
+            }
+            catch
+            {
+                candidate.Dispose();
+                return false;
+            }
+
+            pipe = candidate;
+            writer = new StreamWriter(candidate) { AutoFlush = true };
+            // Full-duplex: read companion → plugin commands on a background reader.
+            _readerCts = new CancellationTokenSource();
+            _ = ReadCommandsAsync(new StreamReader(candidate), _readerCts.Token);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool TryWrite(StreamWriter writer, string line)
+    {
+        try
+        {
+            writer.WriteLine(line);
+            return true;
+        }
+        catch
+        {
+            return false; // companion went away mid-stream
+        }
+    }
+
+    private static async Task ReadCommandsAsync(StreamReader reader, CancellationToken ct)
+    {
+        try
+        {
+            string? line;
+            while (!ct.IsCancellationRequested && (line = await reader.ReadLineAsync(ct).ConfigureAwait(false)) != null)
+            {
+                try { CommandReceived?.Invoke(line); } catch { /* handler must not kill the reader */ }
+            }
+        }
+        catch { /* pipe closed */ }
+    }
+
+    private static void Disconnect(ref NamedPipeClientStream? pipe, ref StreamWriter? writer)
+    {
+        try { _readerCts?.Cancel(); } catch { }
+        _readerCts = null;
+        try { writer?.Dispose(); } catch { }
+        try { pipe?.Dispose(); } catch { }
+        writer = null;
+        pipe = null;
     }
 }

@@ -137,6 +137,11 @@ public sealed class FilePullReceiver
     private readonly TaskCompletionSource<PullResult> _done =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private long _written;
+    private long _total;
+
+    /// <summary>Raised per chunk with (bytesWritten, totalBytes) — totalBytes is 0 until the open
+    /// result arrives. For a progress bar.</summary>
+    public Action<long, long>? Progress;
 
     public FilePullReceiver(EnvelopeRouter router, ulong transferId, Stream dest)
     {
@@ -162,6 +167,8 @@ public sealed class FilePullReceiver
             if (reply.BodyCase != Envelope.BodyOneofCase.FileOpenResult)
                 return new PullResult(false, 0, FileClose.Types.Status.Failed, $"unexpected reply {reply.BodyCase}");
 
+            _total = (long)reply.FileOpenResult.TotalSize;
+            Progress?.Invoke(0, _total);
             return await _done.Task.ConfigureAwait(false);
         }
         finally
@@ -183,6 +190,7 @@ public sealed class FilePullReceiver
                     _written += span.Length;
                 }
                 _ = _router.PushAsync(new Envelope { FileAck = new FileAck { TransferId = _transferId, Offset = (ulong)_written } });
+                Progress?.Invoke(_written, _total);
                 break;
 
             case Envelope.BodyOneofCase.FileClose when env.FileClose.TransferId == _transferId:

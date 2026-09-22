@@ -33,6 +33,7 @@
                 <muxc:NavigationViewItem Content="Channels" Tag="chan" />
                 <muxc:NavigationViewItem Content="DVC traffic" Tag="dvc" />
                 <muxc:NavigationViewItem Content="Link" Tag="link" />
+                <muxc:NavigationViewItem Content="Files" Tag="files" />
             </muxc:NavigationView.MenuItems>
 
             <Grid Margin="0,12,0,0">
@@ -309,6 +310,26 @@
                                 </ListView.ItemTemplate>
                             </ListView>
                         </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- ===================== FILES ===================== -->
+                <Grid x:Name="FilesView" Visibility="Collapsed">
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8"
+                            VerticalAlignment="Top">
+                        <StackPanel Margin="14" Spacing="10">
+                            <TextBlock Opacity="0.8" TextWrapping="Wrap"
+                                       Text="Pull a file off the remote session onto this machine. The agent serves it (windowed, sha256-verified) only from within its advertised file roots." />
+                            <TextBox Header="Remote path (on the session host)"
+                                     PlaceholderText="C:\Users\…\AppData\Local\Temp\app.log"
+                                     Text="{x:Bind Vm.RemotePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBox Header="Save to (on this machine)"
+                                     Text="{x:Bind Vm.LocalDest, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button Content="Pull" Command="{x:Bind Vm.PullCommand}" Style="{ThemeResource AccentButtonStyle}" />
+                            <ProgressBar Minimum="0" Maximum="100" Value="{x:Bind Vm.PullProgress, Mode=OneWay}" />
+                            <TextBlock Opacity="0.75" TextWrapping="Wrap" Text="{x:Bind Vm.PullStatus, Mode=OneWay}" />
+                        </StackPanel>
                     </Border>
                 </Grid>
 

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace Rdpeek.Plugin;
@@ -38,7 +39,11 @@ internal static class PluginHost
 
     public static int RunServer()
     {
-        Logger.Log("server starting (-Embedding)");
+        // Everything before this point — CreateProcess, host resolution, CLR startup, JIT —
+        // is invisible to the log, and it is the part mstsc actually waits on during COM
+        // activation. Measure it, so "the COM spin-up hangs" is a number and not a guess.
+        double startupMs = (DateTime.Now - Process.GetCurrentProcess().StartTime).TotalMilliseconds;
+        Logger.Log($"server starting (-Embedding) — {startupMs:F0}ms from process create to entry");
         CoInitializeEx(IntPtr.Zero, COINIT_MULTITHREADED);
 
         var clsid = new Guid(ClsidString);

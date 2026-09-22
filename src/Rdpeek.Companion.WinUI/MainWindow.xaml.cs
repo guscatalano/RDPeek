@@ -24,5 +24,6 @@ public sealed partial class MainWindow : Window
         ChanView.Visibility = tag == "chan" ? Visibility.Visible : Visibility.Collapsed;
         DvcView.Visibility = tag == "dvc" ? Visibility.Visible : Visibility.Collapsed;
         LinkView.Visibility = tag == "link" ? Visibility.Visible : Visibility.Collapsed;
+        FilesView.Visibility = tag == "files" ? Visibility.Visible : Visibility.Collapsed;
     }
 }
