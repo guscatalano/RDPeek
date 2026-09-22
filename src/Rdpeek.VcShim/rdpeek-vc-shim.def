@@ -1,0 +1,3 @@
+LIBRARY rdpeek-vc-shim
+EXPORTS
+    VirtualChannelGetInstance

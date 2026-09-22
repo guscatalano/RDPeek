@@ -19,8 +19,9 @@
 [CmdletBinding()]
 param(
     [string] $AgentPath,
-    [string] $InstallDir = "$env:LOCALAPPDATA\RDPeek",
-    [string] $TaskName   = 'RDPeek Agent',
+    [string] $InstallDir  = "$env:LOCALAPPDATA\RDPeek",
+    [string] $TaskName    = 'RDPeek Agent',
+    [int]    $WaitSeconds = 0,   # wait this long for -AgentPath to appear (drive redirection may lag at logon)
     [switch] $NoStart
 )
 
@@ -31,6 +32,18 @@ if (-not $AgentPath)
 {
     $candidate = Join-Path $PSScriptRoot '..\publish\agent\rdpeek-agent.exe'
     if (Test-Path $candidate) { $AgentPath = (Resolve-Path $candidate).Path }
+}
+# Launched at session logon over \\tsclient (the bootstrap installer), drive
+# redirection may not be mounted for a moment — wait for the agent to appear
+# rather than failing outright. No-op for the manual case (path already local).
+if ($AgentPath -and $WaitSeconds -gt 0)
+{
+    $deadline = (Get-Date).AddSeconds($WaitSeconds)
+    while (-not (Test-Path $AgentPath) -and (Get-Date) -lt $deadline)
+    {
+        Write-Host "Waiting for $AgentPath ..."
+        Start-Sleep -Milliseconds 500
+    }
 }
 if (-not $AgentPath -or -not (Test-Path $AgentPath))
 {

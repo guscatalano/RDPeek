@@ -22,5 +22,7 @@ public sealed partial class MainWindow : Window
         SessView.Visibility = tag == "sess" ? Visibility.Visible : Visibility.Collapsed;
         SvcView.Visibility = tag == "svc" ? Visibility.Visible : Visibility.Collapsed;
         ChanView.Visibility = tag == "chan" ? Visibility.Visible : Visibility.Collapsed;
+        DvcView.Visibility = tag == "dvc" ? Visibility.Visible : Visibility.Collapsed;
+        LinkView.Visibility = tag == "link" ? Visibility.Visible : Visibility.Collapsed;
     }
 }

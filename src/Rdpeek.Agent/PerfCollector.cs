@@ -66,6 +66,7 @@ internal static class PerfCollector
                         Name = Counters[i].Name,
                         Value = Math.Round(v.doubleValue * Counters[i].Scale, 2),
                         Unit = Counters[i].Unit,
+                        Group = "host",
                     });
             }
         }
@@ -73,6 +74,9 @@ internal static class PerfCollector
         {
             PdhCloseQuery(query);
         }
+
+        // RDP link + graphics quality, when this machine is hosting the session.
+        RemoteFxCollector.AddTo(snap);
         return snap;
     }
 }

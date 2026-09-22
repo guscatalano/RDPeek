@@ -12,9 +12,11 @@ namespace Rdpeek.Agent;
 internal static class ServeLoop
 {
     private const string InspectorChannel = "dvc::diag::inspector";
+    private static IReadOnlyList<string> _fileRoots = Array.Empty<string>();
 
-    public static int Run()
+    public static int Run(IReadOnlyList<string> fileRoots)
     {
+        _fileRoots = fileRoots;
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             Logger.Log($"UNHANDLED: {e.ExceptionObject}");
 
@@ -68,7 +70,7 @@ internal static class ServeLoop
             WtsChannel.WriteFrame(h, Frame.Encode(env)); // raw — client's DVC layer delivers as-is
             return Task.CompletedTask;
         });
-        _ = new AgentCore(router);
+        _ = new AgentCore(router, _fileRoots);
 
         var buffer = new byte[64 * 1024];
         while (!stop.IsSet)

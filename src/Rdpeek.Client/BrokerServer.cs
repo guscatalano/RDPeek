@@ -27,6 +27,8 @@ public sealed class BrokerServer : IDisposable
         public SessionList? Sessions;
         public ServiceList? Services;
         public PerfSnapshot? Perf;
+        public CounterSample? Counters;
+        public ClientLink? Link;
     }
 
     private readonly ConcurrentDictionary<string, AgentState> _states = new();
@@ -111,6 +113,12 @@ public sealed class BrokerServer : IDisposable
                         break;
                     case "perf":
                         try { st.Perf = PerfSnapshot.Parser.ParseJson(payload); } catch { }
+                        break;
+                    case "counters":
+                        try { st.Counters = CounterSample.Parser.ParseJson(payload); } catch { }
+                        break;
+                    case "link":
+                        try { st.Link = ClientLink.Parser.ParseJson(payload); } catch { }
                         break;
                 }
 

@@ -13,7 +13,7 @@ namespace Rdpeek.Plugin;
 [Guid(PluginHost.ClsidString)]
 internal sealed class InspectorPlugin : IWTSPlugin
 {
-    private const string InspectorChannel = "dvc::diag::inspector";
+    internal const string InspectorChannel = "dvc::diag::inspector";
 
     // Per-connection identity for the companion broker (pid + seq).
     private static int _seqCounter;

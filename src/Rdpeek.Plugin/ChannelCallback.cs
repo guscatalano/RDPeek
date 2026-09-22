@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Dvc.Diag.Protocol;
@@ -22,6 +23,15 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
     private readonly CancellationTokenSource _cts = new();
     private volatile string _host = "";
 
+    // Client-side view of this channel. Bytes are counted where they cross the COM
+    // boundary, so they are what mstsc actually moved — independent of anything the
+    // agent reports for the same channel.
+    private long _bytesSent;
+    private long _bytesReceived;
+    private long _pings;
+    private long _pingTimeouts;
+    private double _rttLast, _rttMin = double.MaxValue, _rttSum;
+
     public ChannelCallback(IWTSVirtualChannel channel, int seq)
     {
         _channel = channel;
@@ -36,7 +46,50 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
     {
         var frame = Frame.Encode(env);
         int hr = _channel.Write((uint)frame.Length, frame, IntPtr.Zero);
-        if (hr < 0) Logger.Log($"channel Write failed 0x{hr:X8}");
+        if (hr < 0) { Logger.Log($"channel Write failed 0x{hr:X8}"); return; }
+        Interlocked.Add(ref _bytesSent, frame.Length);
+    }
+
+    /// <summary>
+    /// Round-trip time measured locally: stopwatch before the request, stopwatch after
+    /// the echo. Never a difference of the two machines' clocks — they need not agree,
+    /// and on a fresh VM they usually don't.
+    /// </summary>
+    private async Task MeasureRttAsync()
+    {
+        long started = Stopwatch.GetTimestamp();
+        var reply = await RequestAsync(new Envelope
+        {
+            Ping = new Ping { SequenceNumber = (ulong)Interlocked.Read(ref _pings) + 1 },
+        });
+
+        Interlocked.Increment(ref _pings);
+        if (reply?.BodyCase != Envelope.BodyOneofCase.Ping)
+        {
+            Interlocked.Increment(ref _pingTimeouts);
+            return;
+        }
+
+        double ms = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        _rttLast = ms;
+        _rttSum += ms;
+        if (ms < _rttMin) _rttMin = ms;
+    }
+
+    private ClientLink LinkStats()
+    {
+        long answered = Interlocked.Read(ref _pings) - Interlocked.Read(ref _pingTimeouts);
+        return new ClientLink
+        {
+            Channel = InspectorPlugin.InspectorChannel,
+            RttMsLast = _rttLast,
+            RttMsMin = _rttMin == double.MaxValue ? 0 : _rttMin,
+            RttMsAvg = answered > 0 ? _rttSum / answered : 0,
+            BytesSent = (ulong)Interlocked.Read(ref _bytesSent),
+            BytesReceived = (ulong)Interlocked.Read(ref _bytesReceived),
+            Pings = (ulong)Interlocked.Read(ref _pings),
+            PingTimeouts = (ulong)Interlocked.Read(ref _pingTimeouts),
+        };
     }
 
     /// <summary>Handshake once, then poll host + processes every few seconds and push to the companion.</summary>
@@ -83,6 +136,14 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
                 var perf = await RequestAsync(new Envelope { PerfRequest = new PerfRequest() });
                 if (perf?.BodyCase == Envelope.BodyOneofCase.PerfSnapshot) Push("perf", perf.PerfSnapshot);
 
+                // interval_ms = 0: one-shot snapshot, not a subscription (see diag.proto).
+                var dvc = await RequestAsync(new Envelope { CounterSubscribe = new CounterSubscribe { IntervalMs = 0 } });
+                if (dvc?.BodyCase == Envelope.BodyOneofCase.CounterSample) Push("counters", dvc.CounterSample);
+
+                // Last, so the byte counts include everything this cycle sent.
+                await MeasureRttAsync();
+                Push("link", LinkStats());
+
                 // Every 3rd cycle (~9s): sessions + services (change slowly, bigger payloads).
                 if (cycle % 3 == 0)
                 {
@@ -126,6 +187,7 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
         {
             var buf = new byte[cbSize];
             Marshal.Copy(pBuffer, buf, 0, (int)cbSize);
+            Interlocked.Add(ref _bytesReceived, cbSize);
             foreach (var env in _decoder.PushEnvelopes(buf))
                 _router.Handle(env);
         }

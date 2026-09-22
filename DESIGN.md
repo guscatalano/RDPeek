@@ -221,13 +221,78 @@ Runs on `dvc::diag::files` so it never starves the dashboard on the control
 channel. Backpressure via the ack window keeps the DVC send queue from
 overrunning.
 
-### 6.4 Counter light-up (future)
+### 6.4 Per-DVC traffic counters
+
+Resolved 2026-07-26: the counter set **has shipped** and is **server-side only**.
+
 ```
-agent startup: PdhEnumObjects → per-DVC set present?
-  no  → Capabilities.counters=false   (Health panel stays on ping/echo)
-  yes → Capabilities.counters=true; on CounterSubscribe, push CounterSample
+agent: PdhEnumObjectItems("Remote Desktop Virtual Channel") → present?
+  yes → source "perfmon": one instance per open channel; both directions,
+        RTT, bandwidth, open count. No elevation needed.
+  no  → source "etw": Microsoft.Windows.RemoteDesktop.ServerBase write-flush
+        events, summed per channel. Send direction only, partial, needs admin.
+Either way Capabilities.counters=true and CounterSubscribe{interval_ms=0}
+answers with a CounterSample tagged with its source.
 ```
-No code change ships when the OS build lands — the flag flips at runtime.
+
+Both sources measure the **session host**, so the agent owns them and the
+viewer only ever relays. Direction is always stated from the server's point of
+view: *sent* = host → client.
+
+Why there is no client-side equivalent, established by inspecting the shipping
+binaries rather than assumed:
+
+| Source | Lives in | Client? |
+|---|---|---|
+| `Remote Desktop Virtual Channel` counter set | `rdpcorets.dll` (perflib provider `{57683f06-…}`) | no — never instanced on a machine that only runs mstsc |
+| `RemoteFX Network`, `RemoteFX Graphics` counter sets | `rdpcorets.dll`, same provider | no — same story |
+| `Terminal Services` counter set | `lsm.dll` | counts sessions this machine *hosts*; on a client it reports the local console session |
+| `Microsoft.Windows.RemoteDesktop.ServerBase` (`8375996d-…`) | `rdpserverbase.dll` only | no — this is precisely why RDP_DVC_Watcher "does not work from the client" |
+| `Microsoft.Windows.RemoteDesktop.ClientCore` (`080656c2-…`), `…Base` (`5795aab9-…`) | `mstscax.dll`, `rdpbase.dll` | yes, but the payloads carry transport byte counts (`UdpData`, `BytesRead`), never a channel name |
+
+Enumerating every perflib V2 provider on the box settles the general case: **no RDP
+counter set is owned by a client binary.** `mstscax.dll` and `mstsc.exe` publish no
+perfmon counters at all. Perfmon is a one-sided instrument for RDP.
+
+`rdpeek-doctor dvcprobe [--discover]` is the opt-in client-side probe over those
+client providers: it needs admin, defaults to off, and reports what the local
+build actually emits instead of assuming. Rows it cannot attribute to a channel
+are labelled `(transport)`.
+
+The ETW fallback is a port of
+[RDP_DVC_Watcher](https://github.com/guscatalano/RDP_DVC_Watcher); its event
+scraping lives in `DvcTrafficParser` so it stays unit-testable without a trace
+session.
+
+### 6.5 Link quality, and the one measurement that *is* two-sided
+
+`RemoteFxCollector` relays the `RemoteFX Network` and `RemoteFX Graphics` sets —
+RTT, bandwidth, loss, retransmits, and frames skipped split by whose fault it was
+(server / network / client). They ride `PerfSnapshot`, tagged `group = "link"` /
+`"graphics"` so the viewer can panel them separately from host vitals without
+matching on counter names. Units are left empty deliberately: Windows does not
+document them consistently across this set, and a confidently wrong unit is worse
+than none.
+
+Two PDH modes exist for a reason, and picking wrong fails silently:
+
+| | `Pdh.ReadInstances` (one-shot) | `Pdh.Query` (held open) |
+|---|---|---|
+| Wildcard instances | re-expanded every read — sees new ones | fixed at open — must reopen when a read comes back empty |
+| Rate / average counters | **read as 0** (needs two collects) | correct |
+| Used by | per-channel counters (channels churn; all cumulative or gauge) | RemoteFX (session-scoped; mostly rates) |
+
+Since perfmon is server-only, a genuine both-ends view comes from the plugin
+measuring its own channel instead — `ClientLink`, broker IPC only:
+
+- **RTT** via `Ping`, timed with a local `Stopwatch` around the round trip. Never
+  by differencing `utc_ticks` across the two machines: their clocks need not agree.
+- **Bytes** counted where they cross the COM boundary, so they are what mstsc
+  actually moved.
+
+Both are shown against the agent's numbers for the same channel on the DVC traffic
+tab. Disagreement is the signal: server-side RTT is the network, client-side RTT is
+the network *plus* everything queueing in the DVC.
 
 ---
 

@@ -2,6 +2,30 @@ using Rdpeek.Doctor;
 
 // Standalone DVC plugin registration diagnostician. No RDP session required.
 // Exit code: 0 = no failures, 1 = at least one FAIL finding.
+//
+//   rdpeek-doctor                          Registration check (default).
+//   rdpeek-doctor windows                  List the RDP windows the companion correlates against.
+//   rdpeek-doctor broker [--seconds N]     Host the broker pipe and print what the plugin
+//                                          reports. Run with the companion closed.
+//   rdpeek-doctor dvcprobe [--discover]    Opt-in client-side DVC traffic probe over
+//                                          mstsc's ETW providers. Needs Administrator.
+//     --seconds N                          Stop after N seconds (default: Ctrl+C).
+
+int seconds = 0;
+int secondsAt = Array.FindIndex(args, a => a.Equals("--seconds", StringComparison.OrdinalIgnoreCase));
+if (secondsAt >= 0 && secondsAt + 1 < args.Length) int.TryParse(args[secondsAt + 1], out seconds);
+
+switch (args.Length > 0 ? args[0].ToLowerInvariant() : "")
+{
+    case "dvcprobe":
+        return ClientDvcProbe.Run(args.Contains("--discover", StringComparer.OrdinalIgnoreCase), seconds);
+
+    case "windows":
+        return ClientDiagnostics.ListRdpWindows();
+
+    case "broker":
+        return ClientDiagnostics.ListenToBroker(seconds);
+}
 
 NativeMethods.CoInitializeEx(IntPtr.Zero, NativeMethods.COINIT_MULTITHREADED);
 try
