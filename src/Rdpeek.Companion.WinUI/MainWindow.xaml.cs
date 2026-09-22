@@ -28,6 +28,7 @@ public sealed partial class MainWindow : Window
         FilesView.Visibility = tag == "files" ? Visibility.Visible : Visibility.Collapsed;
         FramesView.Visibility = tag == "frames" ? Visibility.Visible : Visibility.Collapsed;
         DiagView.Visibility = tag == "diag" ? Visibility.Visible : Visibility.Collapsed;
+        SysView.Visibility = tag == "system" ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnEntryClick(object sender, ItemClickEventArgs e)

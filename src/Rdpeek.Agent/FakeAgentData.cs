@@ -118,6 +118,47 @@ internal sealed class FakeAgentData : IAgentData
         return snap;
     }
 
+    public SystemDetail SystemDetail()
+    {
+        var d = new SystemDetail
+        {
+            BuildLabEx = "20348.1.amd64fre.fe_release.210507-1500",
+            BuildLab = "20348.fe_release.210507-1500",
+            EditionId = "ServerDatacenter",
+            DisplayVersion = "21H2",
+            InstallDate = "2024-11-03",
+            RegisteredOwner = "Contoso IT",
+            BootTimeTicks = (DateTime.UtcNow - TimeSpan.FromMilliseconds(9L * 24 * 3600 * 1000 + 4 * 3600 * 1000)).Ticks,
+            UptimeMs = 9L * 24 * 3600 * 1000 + 4 * 3600 * 1000,
+        };
+        void H(string id, string desc, string on) =>
+            d.Hotfixes.Add(new SystemDetail.Types.Hotfix { HotfixId = id, Description = desc, InstalledOn = on });
+        H("KB5031364", "Security Update", "9/12/2025");
+        H("KB5030216", "Update", "8/14/2025");
+        H("KB5028171", "Security Update", "7/10/2025");
+        H("KB5027225", "Servicing Stack Update", "6/13/2025");
+
+        d.Gpus.Add(new SystemDetail.Types.Gpu
+        {
+            Name = "Microsoft Hyper-V Video", DriverVersion = "10.0.20348.1", DriverDate = "2021-05-07",
+            VramBytes = 8UL * 1024 * 1024, Status = "OK",
+        });
+        d.Gpus.Add(new SystemDetail.Types.Gpu
+        {
+            Name = "NVIDIA A16-4Q (vGPU)", DriverVersion = "537.13", DriverDate = "2025-08-22",
+            VramBytes = 4UL * 1024 * 1024 * 1024, Status = "OK",
+        });
+
+        void P(string name, string cls, string status, string problem) =>
+            d.Devices.Add(new SystemDetail.Types.PnpDevice { Name = name, DeviceClass = cls, Status = status, Problem = problem });
+        P("Microsoft Hyper-V Network Adapter", "Net", "OK", "");
+        P("NVIDIA A16-4Q", "Display", "OK", "");
+        P("Generic PnP Monitor", "Monitor", "OK", "");
+        P("Intel 82574L Gigabit Network", "Net", "Error", "CM_PROB 28: drivers not installed");
+        P("Remote Desktop Device Redirector Bus", "System", "OK", "");
+        return d;
+    }
+
     // Live-looking per-channel traffic: bytes accumulate across polls, rates jitter ±15%.
     private long _tick;
     private readonly Random _rng = new();

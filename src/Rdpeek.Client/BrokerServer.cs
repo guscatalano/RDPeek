@@ -29,6 +29,7 @@ public sealed class BrokerServer : IDisposable
         public PerfSnapshot? Perf;
         public CounterSample? Counters;
         public ClientLink? Link;
+        public SystemDetail? System;
     }
 
     private readonly ConcurrentDictionary<string, AgentState> _states = new();
@@ -173,6 +174,9 @@ public sealed class BrokerServer : IDisposable
                         break;
                     case "link":
                         try { st.Link = ClientLink.Parser.ParseJson(payload); } catch { }
+                        break;
+                    case "system":
+                        try { st.System = SystemDetail.Parser.ParseJson(payload); } catch { }
                         break;
                 }
 

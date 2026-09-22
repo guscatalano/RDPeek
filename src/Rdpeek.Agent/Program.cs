@@ -183,4 +183,18 @@ static void RunSelfTest()
     foreach (var c in dvc.Channels)
         Console.WriteLine($"  {Trim(c.Name, 34),-34} sent {Bytes(c.BytesSent),10}  recv {Bytes(c.BytesReceived),10}  " +
                           $"{Rate(c.SendRateBps)} up / {Rate(c.RecvRateBps)} down");
+
+    Console.WriteLine();
+    Console.WriteLine("== System detail ==");
+    var sd = SystemDetailCollector.Collect();
+    Console.WriteLine($"  BuildLabEx: {sd.BuildLabEx}");
+    Console.WriteLine($"  Edition   : {sd.EditionId}  {sd.DisplayVersion}   installed {sd.InstallDate}   up {sd.UptimeMs / 1000.0 / 86400.0:0.0} d");
+    Console.WriteLine($"  Updates   : {sd.Hotfixes.Count}   GPUs: {sd.Gpus.Count}   PnP devices: {sd.Devices.Count}" +
+                      $"   (problem: {sd.Devices.Count(d => d.Problem.Length > 0)})");
+    foreach (var g in sd.Gpus)
+        Console.WriteLine($"    GPU  {Trim(g.Name, 34),-34} drv {g.DriverVersion} ({g.DriverDate})");
+    foreach (var d in sd.Devices.Where(d => d.Problem.Length > 0).Take(6))
+        Console.WriteLine($"    !    {Trim(d.Name, 40),-40} {d.Problem}");
+    foreach (var n in sd.Notes)
+        Console.WriteLine($"    note: {n}");
 }

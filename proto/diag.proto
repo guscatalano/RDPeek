@@ -79,6 +79,10 @@ message Envelope {
     ServiceList        service_list         = 75;
     PerfRequest        perf_request         = 76;
     PerfSnapshot       perf_snapshot        = 77;
+
+    // -- deep system detail (build, updates, drivers, PnP devices) --
+    SystemDetailRequest system_detail_request = 78;
+    SystemDetail        system_detail         = 79;
   }
 }
 
@@ -148,6 +152,50 @@ message PerfSnapshot {
 }
 
 // ============================================================================
+// Deep system detail: build identity, installed updates, drivers, PnP devices
+// ============================================================================
+
+message SystemDetailRequest {}
+
+message SystemDetail {
+  // Build / OS identity (mostly HKLM\...\CurrentVersion).
+  string build_lab_ex      = 1;   // e.g. 22621.1.amd64fre.ni_release.220506-1250
+  string build_lab         = 2;
+  string edition_id        = 3;   // Professional | ServerDatacenter | ...
+  string display_version   = 4;   // 23H2
+  string install_date      = 5;   // local time, formatted
+  string registered_owner  = 6;
+  int64  boot_time_ticks   = 7;   // last boot, UTC DateTime.Ticks
+  int64  uptime_ms         = 8;
+
+  repeated Hotfix hotfixes     = 20;  // installed QFE updates
+  repeated Gpu    gpus         = 21;  // display adapters + driver
+  repeated PnpDevice devices   = 22;  // PnP devices (problem ones flagged)
+
+  // Collectors that failed (e.g. WMI unavailable) so the UI can say so.
+  repeated string notes        = 30;
+
+  message Hotfix {
+    string hotfix_id   = 1;   // KB5031354
+    string description = 2;   // Security Update / Update / Hotfix
+    string installed_on = 3;
+  }
+  message Gpu {
+    string name           = 1;
+    string driver_version = 2;
+    string driver_date    = 3;
+    uint64 vram_bytes     = 4;
+    string status         = 5;   // OK | Degraded | Error
+  }
+  message PnpDevice {
+    string name        = 1;
+    string device_class = 2;   // Display | Net | System | ...
+    string status      = 3;    // OK | Error | Unknown
+    string problem     = 4;    // decoded ConfigManagerErrorCode when != 0
+  }
+}
+
+// ============================================================================
 // Client-side link measurement (broker IPC only — never sent over the DVC)
 // ============================================================================
 
@@ -190,6 +238,7 @@ message Capabilities {
   bool   process_kill     = 13;  // WTSTerminateProcess
   bool   file_pull        = 14;  // remote -> client
   bool   file_push        = 15;  // client -> remote
+  bool   system_detail    = 16;  // build / updates / drivers / PnP devices (read-only)
 
   // File transfer is confined to these roots (empty => file transfer disabled
   // regardless of file_pull/file_push). Paths outside are rejected by the agent.

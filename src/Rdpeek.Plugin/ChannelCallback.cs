@@ -355,6 +355,9 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
 
                     var svc = await RequestAsync(new Envelope { ServiceListRequest = new ServiceListRequest() });
                     if (svc?.BodyCase == Envelope.BodyOneofCase.ServiceList) Push("services", svc.ServiceList);
+
+                    var sysd = await RequestAsync(new Envelope { SystemDetailRequest = new SystemDetailRequest() });
+                    if (sysd?.BodyCase == Envelope.BodyOneofCase.SystemDetail) Push("system", sysd.SystemDetail);
                 }
 
                 cycle++;

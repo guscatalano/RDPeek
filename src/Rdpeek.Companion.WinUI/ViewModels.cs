@@ -91,6 +91,18 @@ public sealed record DvcRow(string Name, string Sent, string Received, string Se
 /// <summary>One RemoteFX link/graphics counter, as Windows names it.</summary>
 public sealed record LinkRow(string Name, string Value, string Instance);
 
+/// <summary>An installed Windows update (QFE).</summary>
+public sealed record HotfixRow(string Id, string Description, string Installed);
+
+/// <summary>A display adapter and its driver.</summary>
+public sealed record GpuRow(string Name, string Driver, string Date, string Vram, string Status);
+
+/// <summary>A PnP device; HasProblem drives the red highlight.</summary>
+public sealed record DeviceRow(string Name, string Class, string Status, string Problem, bool HasProblem)
+{
+    public Brush StatusBrush => HasProblem ? UiBrushes.Fail : UiBrushes.Muted;
+}
+
 /// <summary>One decoded field of a frame, flattened for the detail pane. Indent is the tree depth
 /// rendered as a left margin.</summary>
 public sealed record FrameFieldRow(string Text, double Indent)
@@ -129,6 +141,10 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<ServiceRow> Services { get; } = new();
     public ObservableCollection<DvcRow> DvcTraffic { get; } = new();
     public ObservableCollection<LinkRow> LinkQuality { get; } = new();
+    public ObservableCollection<HotfixRow> Hotfixes { get; } = new();
+    public ObservableCollection<GpuRow> Gpus { get; } = new();
+    public ObservableCollection<DeviceRow> Devices { get; } = new();
+    [ObservableProperty] private string _systemBuild = "Connect an agent to read deep system detail.";
 
     // Persistent connection/status bar (shown above every tab).
     private DateTime? _lastAgentUpdate;
@@ -538,6 +554,15 @@ public partial class MainViewModel : ObservableObject
                 linkQuality = LinkQuality.Select(l => new { l.Name, l.Value, l.Instance }),
                 rtt = new { server = RttServer, client = RttClient, gap = RttGap, note = RttExplain },
                 clientMeasured = ClientMeasured,
+                systemDetail = st?.System is not { } sd ? null : new
+                {
+                    sd.BuildLabEx, sd.BuildLab, sd.EditionId, sd.DisplayVersion, sd.InstallDate,
+                    sd.RegisteredOwner, sd.UptimeMs,
+                    hotfixes = sd.Hotfixes.Select(h => new { h.HotfixId, h.Description, h.InstalledOn }),
+                    gpus = sd.Gpus.Select(g => new { g.Name, g.DriverVersion, g.DriverDate, g.VramBytes, g.Status }),
+                    devices = sd.Devices.Select(p => new { p.Name, p.DeviceClass, p.Status, p.Problem }),
+                    notes = sd.Notes,
+                },
                 diagnostics = Diagnostics.Select(r => new
                 {
                     r.PluginKey, r.Source, r.Name, r.Activation, r.ModulePath, r.Bitness, r.Clsid, r.Worst,
@@ -695,6 +720,36 @@ public partial class MainViewModel : ObservableObject
         UpdateLinkQuality(st?.Perf);
         UpdateClientMeasured(st?.Link);
         UpdateRttComparison(st?.Counters, st?.Link);
+        UpdateSystemDetail(st?.System);
+    }
+
+    private void UpdateSystemDetail(SystemDetail? d)
+    {
+        Hotfixes.Clear();
+        Gpus.Clear();
+        Devices.Clear();
+        if (d is null)
+        {
+            SystemBuild = "Waiting for the agent's system detail (collected every few seconds)…";
+            return;
+        }
+
+        string boot = d.BootTimeTicks > 0
+            ? new DateTime(d.BootTimeTicks, DateTimeKind.Utc).ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+            : "—";
+        double upDays = d.UptimeMs / 1000.0 / 86400.0;
+        SystemBuild =
+            $"BuildLabEx :  {d.BuildLabEx}\n" +
+            $"Edition    :  {d.EditionId}    ·    {d.DisplayVersion}\n" +
+            $"Installed  :  {d.InstallDate}    ·    owner {d.RegisteredOwner}\n" +
+            $"Booted     :  {boot}    ·    up {upDays:0.0} d";
+        if (d.Notes.Count > 0) SystemBuild += "\n\nCollector notes: " + string.Join("; ", d.Notes);
+
+        foreach (var h in d.Hotfixes) Hotfixes.Add(new HotfixRow(h.HotfixId, h.Description, h.InstalledOn));
+        foreach (var g in d.Gpus)
+            Gpus.Add(new GpuRow(g.Name, g.DriverVersion, g.DriverDate, g.VramBytes > 0 ? Bytes(g.VramBytes) : "", g.Status));
+        foreach (var p in d.Devices)
+            Devices.Add(new DeviceRow(p.Name, p.DeviceClass, p.Status, p.Problem, p.Problem.Length > 0));
     }
 
     /// <summary>

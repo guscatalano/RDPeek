@@ -76,6 +76,10 @@ internal sealed class AgentCore
                     _ = _router.RespondAsync(new Envelope { PerfSnapshot = _data.Perf() }, env.RequestId);
                     break;
 
+                case Envelope.BodyOneofCase.SystemDetailRequest:
+                    _ = _router.RespondAsync(new Envelope { SystemDetail = _data.SystemDetail() }, env.RequestId);
+                    break;
+
                 // Periodic pushes aren't wired yet: any interval is answered one-shot,
                 // which is what the polling viewer asks for.
                 case Envelope.BodyOneofCase.CounterSubscribe:
@@ -119,6 +123,7 @@ internal sealed class AgentCore
             FilePull = _fileRoots.Count > 0,     // pull-only, confined to the roots below
             FilePush = false,
             Counters = DvcCounters.Available,    // perfmon counter set, else the ETW fallback
+            SystemDetail = true,                 // build / updates / drivers / PnP (read-only)
             MaxChunkBytes = 256 * 1024,
         };
         caps.FileRoots.AddRange(_fileRoots);

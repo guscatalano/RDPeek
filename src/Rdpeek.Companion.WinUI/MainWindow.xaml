@@ -50,6 +50,7 @@
                 <muxc:NavigationViewItem Content="Files" Tag="files" />
                 <muxc:NavigationViewItem Content="Diagnostics" Tag="diag" />
                 <muxc:NavigationViewItemHeader Content="Host (via agent)" />
+                <muxc:NavigationViewItem Content="System" Tag="system" />
                 <muxc:NavigationViewItem Content="Network" Tag="net" />
                 <muxc:NavigationViewItem Content="Sessions" Tag="sess" />
                 <muxc:NavigationViewItem Content="Services" Tag="svc" />
@@ -642,6 +643,86 @@
                                 </ItemsControl>
                             </ScrollViewer>
                         </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- ===================== SYSTEM DETAIL ===================== -->
+                <Grid x:Name="SysView" Visibility="Collapsed">
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                        <ScrollViewer>
+                            <StackPanel Margin="14" Spacing="14">
+                                <TextBlock Opacity="0.8" TextWrapping="Wrap"
+                                           Text="Deep system detail from the agent: build identity (BuildLabEx), boot time and uptime, installed updates, display-adapter drivers, and PnP devices — problem devices first." />
+
+                                <!-- build identity -->
+                                <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                                        CornerRadius="6" Padding="14,10">
+                                    <TextBlock Text="{x:Bind Vm.SystemBuild, Mode=OneWay}" FontFamily="Consolas"
+                                               LineHeight="20" TextWrapping="Wrap" />
+                                </Border>
+
+                                <!-- installed updates -->
+                                <TextBlock Text="Installed updates" FontWeight="SemiBold" />
+                                <ItemsControl ItemsSource="{x:Bind Vm.Hotfixes}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:HotfixRow">
+                                            <Grid ColumnSpacing="10" Padding="0,2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="0.22*" /><ColumnDefinition Width="0.48*" />
+                                                    <ColumnDefinition Width="0.30*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{x:Bind Id}" FontFamily="Consolas" />
+                                                <TextBlock Grid.Column="1" Text="{x:Bind Description}" Opacity="0.85" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Column="2" Text="{x:Bind Installed}" FontFamily="Consolas" Opacity="0.6" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!-- display adapters -->
+                                <TextBlock Text="Display adapters" FontWeight="SemiBold" />
+                                <ItemsControl ItemsSource="{x:Bind Vm.Gpus}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:GpuRow">
+                                            <Grid ColumnSpacing="10" Padding="0,3">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="0.40*" /><ColumnDefinition Width="0.20*" />
+                                                    <ColumnDefinition Width="0.18*" /><ColumnDefinition Width="0.12*" />
+                                                    <ColumnDefinition Width="0.10*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Column="1" Text="{x:Bind Driver}" FontFamily="Consolas" Opacity="0.85" />
+                                                <TextBlock Grid.Column="2" Text="{x:Bind Date}" FontFamily="Consolas" Opacity="0.6" />
+                                                <TextBlock Grid.Column="3" Text="{x:Bind Vram}" FontFamily="Consolas" Opacity="0.6" />
+                                                <TextBlock Grid.Column="4" Text="{x:Bind Status}" Opacity="0.8" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!-- PnP devices -->
+                                <TextBlock Text="PnP devices" FontWeight="SemiBold" />
+                                <ItemsControl ItemsSource="{x:Bind Vm.Devices}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:DeviceRow">
+                                            <Grid ColumnSpacing="10" Padding="0,2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="0.34*" /><ColumnDefinition Width="0.12*" />
+                                                    <ColumnDefinition Width="0.12*" /><ColumnDefinition Width="0.42*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Column="1" Text="{x:Bind Class}" Opacity="0.7" />
+                                                <TextBlock Grid.Column="2" Text="{x:Bind Status}" Foreground="{x:Bind StatusBrush}" />
+                                                <TextBlock Grid.Column="3" Text="{x:Bind Problem}" TextWrapping="Wrap"
+                                                           Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
                     </Border>
                 </Grid>
 
