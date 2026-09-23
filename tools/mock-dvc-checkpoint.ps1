@@ -4,7 +4,7 @@
     over a real dynamic virtual channel, using real mstsc.exe.
 
 .DESCRIPTION
-    Obtains MockRdp.exe, starts it opening the RDPeek diagnostics channel
+    Obtains MockRdpCli.exe, starts it opening the RDPeek diagnostics channel
     (dvc::diag::inspector) server-side, registers the RDPeek client plugin, then connects
     real mstsc.exe to it. mstsc loads the plugin (a hosted mstscax control does NOT — only
     mstsc.exe loads DVC AddIns), the mock opens the channel, and the plugin's listener

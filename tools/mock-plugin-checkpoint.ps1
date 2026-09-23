@@ -7,7 +7,7 @@
     A hosted mstscax control does NOT load the client COM AddIns that mstsc.exe does, so this uses
     rdpeek-vc-shim.dll (VirtualChannelGetInstance -> CoCreateInstance the registered RDPeek plugin)
     via the Bootstrap's --plugin-dll. Flow:
-      1. obtain MockRdp.exe (build from ..\mock-rdp if present, else download the release)
+      1. obtain MockRdpCli.exe (build from ..\mock-rdp if present, else download the release)
       2. build the shim, build + register the plugin, build the bootstrap
       3. start the mock opening the diag channels, exporting its cert (--cert-out)
       4. trust that exact cert (CurrentUser\Root) so the headless control connects prompt-free

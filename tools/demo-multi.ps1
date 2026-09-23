@@ -101,4 +101,4 @@ Start-Process $comp | Out-Null
 
 Write-Host "`nUP: $N agents + $N mocks + $N mstsc + companion." -ForegroundColor Green
 Write-Host "The companion's Dashboard should list $N connections ($($names -join ', ')), each a different host persona."
-Write-Host "Stop with:  Get-Process rdpeek-agent,MockRdp,mstsc,Rdpeek.Companion.WinUI | Stop-Process -Force; $repo\tools\unregister.ps1"
+Write-Host "Stop with:  Get-Process rdpeek-agent,MockRdpCli,mstsc,Rdpeek.Companion.WinUI | Stop-Process -Force; $repo\tools\unregister.ps1"
