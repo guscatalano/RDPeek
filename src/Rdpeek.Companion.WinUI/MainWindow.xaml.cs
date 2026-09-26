@@ -28,6 +28,14 @@ public sealed partial class MainWindow : Window
 
         // Let the user dock the whole thing to the right edge instead of the left.
         Vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(MainViewModel.DockRight)) ApplyDock(); };
+
+        // System-tray icon: the primary way to drive the switcher without the dashboard open.
+        _tray = new TrayIcon(
+            () => new TrayState(Vm.DockRight, Vm.AutoCycle, Vm.ShowConnectionBar),
+            id => DispatcherQueue.TryEnqueue(() => OnTrayCommand(id)));
+
+        // Closing the dashboard hides it to the tray rather than quitting; Exit (tray) really quits.
+        AppWindow.Closing += (_, e) => { if (!_exiting) { e.Cancel = true; AppWindow.Hide(); } };
     }
 
     private void OnNavChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -82,7 +90,27 @@ public sealed partial class MainWindow : Window
     private SwitcherWindow? _switcher;
     private readonly EdgeTrigger _edge;
     private readonly EdgeHandleWindow _handle;
+    private readonly TrayIcon _tray;
     private bool _switcherVisible;
+    private bool _exiting;
+
+    private void OnTrayCommand(int id)
+    {
+        switch (id)
+        {
+            case TrayIcon.CmdShowSwitcher: ShowSwitcher(); break;
+            case TrayIcon.CmdDockLeft: Vm.DockRight = false; break;
+            case TrayIcon.CmdDockRight: Vm.DockRight = true; break;
+            case TrayIcon.CmdAutoCycle: Vm.AutoCycle = !Vm.AutoCycle; break;
+            case TrayIcon.CmdConnectionBar: Vm.ShowConnectionBar = !Vm.ShowConnectionBar; break;
+            case TrayIcon.CmdDashboard: AppWindow.Show(); Activate(); break;
+            case TrayIcon.CmdExit:
+                _exiting = true;
+                _tray.Dispose();
+                Application.Current.Exit();
+                break;
+        }
+    }
 
     /// <summary>The switcher is created once and shown/hidden (not closed), so the edge trigger and the
     /// Hide button drive the same instance. It shares this window's view model, so it lists the same
