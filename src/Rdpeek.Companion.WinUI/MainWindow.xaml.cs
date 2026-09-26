@@ -19,6 +19,12 @@ public sealed partial class MainWindow : Window
         // marshals onto the UI thread.
         _edge = new EdgeTrigger(() => DispatcherQueue.TryEnqueue(() => ShowSwitcher()));
         Closed += (_, _) => _edge?.Dispose();
+
+        // A visible nub at the left edge shows where to aim; hovering it reveals the sidebar.
+        _handle = new EdgeHandleWindow();
+        _handle.RevealRequested += () => DispatcherQueue.TryEnqueue(() => ShowSwitcher());
+        _handle.AppWindow.Show(false);
+        Closed += (_, _) => { try { _handle?.Close(); } catch { } };
     }
 
     private void OnNavChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -72,6 +78,7 @@ public sealed partial class MainWindow : Window
 
     private SwitcherWindow? _switcher;
     private readonly EdgeTrigger _edge;
+    private readonly EdgeHandleWindow _handle;
     private bool _switcherVisible;
 
     /// <summary>The switcher is created once and shown/hidden (not closed), so the edge trigger and the
@@ -89,6 +96,7 @@ public sealed partial class MainWindow : Window
     {
         if (_switcherVisible) return;
         EnsureSwitcher();
+        _handle.AppWindow.Hide();          // hide the hint nub while the full sidebar is up
         _switcher!.AppWindow.Show(activate);
         if (activate) _switcher.Activate();
         _switcherVisible = true;
@@ -96,9 +104,9 @@ public sealed partial class MainWindow : Window
 
     private void HideSwitcher()
     {
-        if (_switcher is null) return;
-        _switcher.AppWindow.Hide();
         _switcherVisible = false;
+        _switcher?.AppWindow.Hide();
+        _handle.AppWindow.Show(false);     // bring the hint nub back
     }
 
     private void OnToggleSwitcher(object sender, RoutedEventArgs e)

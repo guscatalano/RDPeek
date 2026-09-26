@@ -740,7 +740,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (row is null) return;
         SelectedConnection = row;
-        if (row.WindowPid > 0) SendWindow("foreground");
+        if (row.WindowPid > 0) SendWindow("fullscreen");   // bring forward + ensure fullscreen
     }
 
     /// <summary>Cycle the selection forward/backward through the open connections and activate it.</summary>

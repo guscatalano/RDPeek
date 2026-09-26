@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="Rdpeek.Companion.WinUI.EdgeHandleWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid x:Name="Root" Background="Transparent"
+          PointerEntered="OnReveal" PointerPressed="OnReveal">
+        <!-- a small accent nub poking out from the left edge, hinting where to aim the cursor -->
+        <Border Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="0,5,5,0" Opacity="0.9">
+            <TextBlock Text="›" FontSize="13" FontWeight="Bold"
+                       Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+    </Grid>
+</Window>

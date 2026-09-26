@@ -197,6 +197,32 @@ static void ForceForeground(HWND h)
     if (attached) AttachThreadInput(myTid, fgTid, FALSE);
 }
 
+// Does the window cover its monitor (i.e. mstsc is in fullscreen mode)? A small slack absorbs the
+// off-by-a-pixel a fullscreen mstsc sometimes has, so we never misread fullscreen as windowed.
+static bool CoversMonitor(HWND h)
+{
+    RECT wr;
+    if (!h || !GetWindowRect(h, &wr)) return false;
+    MONITORINFO mi; mi.cbSize = sizeof(mi);
+    if (!GetMonitorInfo(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST), &mi)) return false;
+    const RECT& m = mi.rcMonitor;
+    return wr.left <= m.left + 2 && wr.top <= m.top + 2 && wr.right >= m.right - 2 && wr.bottom >= m.bottom - 2;
+}
+
+// Toggle mstsc's fullscreen mode via its Ctrl+Alt+Break shortcut (Break == VK_CANCEL). It's a toggle
+// and goes to the foreground window, so callers foreground the target first and only fire it when the
+// window isn't already fullscreen — otherwise it would kick mstsc *out* of fullscreen.
+static void SendFullscreenToggle()
+{
+    keybd_event(VK_CONTROL, 0, 0, 0);
+    keybd_event(VK_MENU, 0, 0, 0);
+    keybd_event(VK_CANCEL, 0, 0, 0);
+    Sleep(30);
+    keybd_event(VK_CANCEL, 0, KEYEVENTF_KEYUP, 0);
+    keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0);
+    keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0);
+}
+
 // ---- command execution ---------------------------------------------------------------------------
 static void Execute(const std::string& line)
 {
@@ -225,6 +251,15 @@ static void Execute(const std::string& line)
         FLASHWINFO fi = { sizeof(fi), g_mstsc, FLASHW_ALL, 3, 0 }; FlashWindowEx(&fi);
     } else if (verb == "foreground") {
         ForceForeground(g_mstsc);           // used by the Companion's switch-window hotkey
+    } else if (verb == "fullscreen") {
+        // Switch to this session AND make sure it's fullscreen. Foreground first (so the toggle keys
+        // reach it), then enter fullscreen only if it isn't already covering the monitor. Poll for
+        // coverage so a session still animating back from minimized-fullscreen isn't misread as
+        // windowed and toggled straight back out.
+        ForceForeground(g_mstsc);
+        bool full = false;
+        for (int i = 0; i < 8 && !(full = CoversMonitor(g_mstsc)); ++i) Sleep(60);
+        if (!full) SendFullscreenToggle();
     } else if (verb == "overlay") {
         g_overlayText = arg.empty() ? L"" : Widen(arg);
         ShowOverlay(!arg.empty());

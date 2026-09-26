@@ -37,7 +37,8 @@ message-delimited UTF-8:
 | `show min\|max\|restore` | window state |
 | `overlay <text>` | show/update the HUD banner (empty text hides it) |
 | `flash` | flash the taskbar button |
-| `foreground` | restore + pull the window to the front (used by the Companion's switcher / cycle hotkeys) |
+| `foreground` | restore + pull the window to the front |
+| `fullscreen` | foreground the window and ensure it's fullscreen (mstsc Ctrl+Alt+Break toggle, only if not already covering the monitor) — used by the switcher |
 
 ```powershell
 # $pid here is the target mstsc's process id (the plugin logs its pipe name on load)
@@ -67,11 +68,14 @@ mstsc's pid from the RDP window and connecting to `\\.\pipe\rdpeek-window-<pid>`
 (connect-write-close), off the UI thread, so a missing plugin never hangs the dashboard. The controls
 grey out when no connection is selected.
 
-**Switching between windows.** The Window tab also has a *switcher sidebar* — a thin, borderless,
+**Switching between windows.** The Window tab has a *switcher sidebar* — a thin, borderless,
 always-on-top strip docked to the left edge that lists every open RDP connection; click one to bring
-its mstsc window to the front (it sends `foreground` to that connection's pipe). A global
-**Ctrl+Alt+← / →** hotkey (toggle on the same tab) cycles to the previous / next connection and
-foregrounds it. Both share the dashboard's live connection list.
+its mstsc window forward **and make it fullscreen** (it sends `fullscreen` to that connection's pipe).
+A small accent **peek handle** sits at the left edge (mid-screen) as a hint — hover it to reveal the
+sidebar. The sidebar **auto-hides when it loses focus** and can also be revealed by shoving the cursor
+into the left edge, or dismissed with its **Hide** button. A global **Ctrl+Alt+← / →** hotkey (toggle
+on the same tab) cycles to the previous / next connection and switches to it. Everything shares the
+dashboard's live connection list.
 
 ## Lifecycle (verified live against the mock)
 
