@@ -31,6 +31,7 @@ public sealed partial class MainWindow : Window
         SysView.Visibility = tag == "system" ? Visibility.Visible : Visibility.Collapsed;
         EventsView.Visibility = tag == "events" ? Visibility.Visible : Visibility.Collapsed;
         ShellView.Visibility = tag == "shell" ? Visibility.Visible : Visibility.Collapsed;
+        WindowView.Visibility = tag == "window" ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnEntryClick(object sender, ItemClickEventArgs e)

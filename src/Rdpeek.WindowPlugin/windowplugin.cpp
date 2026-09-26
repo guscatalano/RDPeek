@@ -43,6 +43,7 @@ static std::wstring g_overlayText;
 static HANDLE  g_stop = nullptr;
 static HANDLE  g_uiThread = nullptr;
 static HANDLE  g_pipeThread = nullptr;
+static HANDLE  g_attachThread = nullptr;
 
 static const wchar_t* kMstscClass   = L"TscShellContainerClass";
 static const wchar_t* kOverlayClass = L"RdpeekOverlay";
@@ -83,6 +84,23 @@ static HWND FindMstscWindow()
         return TRUE;
     }, reinterpret_cast<LPARAM>(&ctx));
     return ctx.found;
+}
+
+// Bind to mstsc's session window and remember its real title — exactly once. Callable from any
+// thread; the first caller to see the window wins the original-title capture. We can't rely on
+// IWTSPlugin::Connected for this: mstsc releases the plugin object right after Initialize (we never
+// engage the channel manager), so Connected never fires — but our background threads live on and
+// drive the window over the pipe. This is the reliable attach path.
+static void EnsureAttached()
+{
+    if (g_mstsc && IsWindow(g_mstsc)) return;
+    HWND h = FindMstscWindow();
+    if (!h) return;
+    g_mstsc = h;
+    if (g_origTitle.empty()) {
+        wchar_t t[512] = {}; GetWindowTextW(h, t, 512); g_origTitle = t;
+    }
+    Log("attached to mstsc HWND=%p title='%ls'", (void*)h, g_origTitle.c_str());
 }
 
 // ---- overlay (owned by the UI thread) -------------------------------------------------------------
@@ -139,11 +157,28 @@ static DWORD WINAPI UiThread(LPVOID)
 
 static void ShowOverlay(bool show) { if (g_overlay) PostMessageW(g_overlay, WM_RDPEEK_OVERLAY, show ? 1 : 0, 0); }
 
+// Waits for mstsc's session window to appear (it doesn't exist yet at Initialize time), binds to it,
+// captures its real title, and shows a proof-of-life HUD so the in-process load is visible without
+// the Companion. After that the pipe drives everything.
+static DWORD WINAPI AttachThread(LPVOID)
+{
+    for (int i = 0; i < 150 && WaitForSingleObject(g_stop, 0) != WAIT_OBJECT_0; ++i) {
+        EnsureAttached();
+        if (g_mstsc) {
+            g_overlayText = L"RDPeek  ·  window plugin running in-process";
+            ShowOverlay(true);
+            return 0;
+        }
+        Sleep(200);
+    }
+    return 0;
+}
+
 // ---- command execution ---------------------------------------------------------------------------
 static void Execute(const std::string& line)
 {
     Log("cmd: %s", line.c_str());
-    if (!g_mstsc || !IsWindow(g_mstsc)) g_mstsc = FindMstscWindow();
+    EnsureAttached();
     if (!g_mstsc) { Log("  (no mstsc window)"); return; }
 
     auto sp = line.find(' ');
@@ -202,8 +237,9 @@ static DWORD WINAPI PipeThread(LPVOID)
 static void StartThreads()
 {
     if (!g_stop) g_stop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    if (!g_uiThread)   g_uiThread   = CreateThread(nullptr, 0, UiThread,   nullptr, 0, nullptr);
-    if (!g_pipeThread) g_pipeThread = CreateThread(nullptr, 0, PipeThread, nullptr, 0, nullptr);
+    if (!g_uiThread)     g_uiThread     = CreateThread(nullptr, 0, UiThread,     nullptr, 0, nullptr);
+    if (!g_pipeThread)   g_pipeThread   = CreateThread(nullptr, 0, PipeThread,   nullptr, 0, nullptr);
+    if (!g_attachThread) g_attachThread = CreateThread(nullptr, 0, AttachThread, nullptr, 0, nullptr);
 }
 
 // ---- the plugin object (IWTSPlugin: IUnknown + Initialize/Connected/Disconnected/Terminated) ------
@@ -223,16 +259,15 @@ public:
     ULONG STDMETHODCALLTYPE Release() override { LONG r = InterlockedDecrement(&m_ref); if (!r) delete this; return r; }
 
     virtual HRESULT STDMETHODCALLTYPE Initialize(void* /*mgr*/) {
+        // The one lifecycle callback we actually get: mstsc releases us right after this (we create no
+        // channel listener), so Connected/Disconnected/Terminated below generally never fire. The
+        // factory already started the background threads; AttachThread binds to the window from here.
         Log("Initialize — in-process, pid=%lu", GetCurrentProcessId());
         return S_OK;
     }
-    virtual HRESULT STDMETHODCALLTYPE Connected() {
-        Log("Connected — locating mstsc window");
-        for (int i = 0; i < 40 && !((g_mstsc = FindMstscWindow())); ++i) Sleep(100);
-        if (!g_mstsc) { Log("mstsc window not found"); return S_OK; }
-        wchar_t t[512] = {}; GetWindowTextW(g_mstsc, t, 512); g_origTitle = t;
-        Log("found mstsc HWND=%p — tagging title + overlay", (void*)g_mstsc);
-        Execute("title in-proc plugin loaded");                 // proof of life
+    virtual HRESULT STDMETHODCALLTYPE Connected() {   // best-effort: rarely called (see Initialize)
+        Log("Connected");
+        EnsureAttached();
         g_overlayText = L"RDPeek  ·  window plugin running in-process";
         ShowOverlay(true);
         return S_OK;
@@ -276,6 +311,7 @@ public:
 // ---- DLL exports ----------------------------------------------------------------------------------
 extern "C" HRESULT __stdcall DllGetClassObject(REFCLSID rclsid, REFIID riid, void** ppv)
 {
+    Log("DllGetClassObject — pid=%lu, our clsid=%d", GetCurrentProcessId(), rclsid == CLSID_WindowPlugin);
     if (rclsid != CLSID_WindowPlugin) return CLASS_E_CLASSNOTAVAILABLE;
     auto* f = new (std::nothrow) Factory();
     if (!f) return E_OUTOFMEMORY;
@@ -290,6 +326,6 @@ extern "C" HRESULT __stdcall DllCanUnloadNow() { return S_FALSE; }
 
 BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID)
 {
-    if (reason == DLL_PROCESS_ATTACH) { g_module = h; DisableThreadLibraryCalls(h); }
+    if (reason == DLL_PROCESS_ATTACH) { g_module = h; DisableThreadLibraryCalls(h); Log("DllMain ATTACH — pid=%lu", GetCurrentProcessId()); }
     return TRUE;
 }

@@ -240,6 +240,14 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _shellEnabled;
     [ObservableProperty] private string _shellHint = "Select a connection whose agent was started with --allow-shell.";
 
+    // In-process window plugin (Rdpeek.WindowPlugin) — drive mstsc's own window over its control pipe.
+    // This is the client end of \\.\pipe\rdpeek-window; the plugin runs inside mstsc and moves the window.
+    [ObservableProperty] private string _windowTag = "RDPeek";
+    [ObservableProperty] private string _overlayText = "recording…";
+    [ObservableProperty] private string _windowStatus =
+        "Drives the in-process window plugin over \\\\.\\pipe\\rdpeek-window. " +
+        "Register src/Rdpeek.WindowPlugin and connect an RDP session, then use these controls.";
+
     // Windows Event Log viewer.
     public ObservableCollection<EventRow> EventLogEntries { get; } = new();
     public ObservableCollection<string> EventLogNames { get; } = new() { "System", "Application", "Setup" };
@@ -664,6 +672,49 @@ public partial class MainViewModel : ObservableObject
         if (note.Length > 0) AppendShell("[" + note + "]");
         AppendShell($"[exit {p[1]}]");
         if (ShellOutput.Length > 200_000) ShellOutput = "…(trimmed)\n" + ShellOutput[^150_000..];
+    }
+
+    // ── in-process window plugin (\\.\pipe\rdpeek-window) ─────────────────
+    // The out-of-process diag plugin can't touch mstsc's window; the tiny in-process WindowPlugin can,
+    // and takes newline-delimited text commands on this pipe. One-shot connect-write-close per command.
+    private const string WindowPipe = "rdpeek-window";
+
+    [RelayCommand] private void WinTag() => SendWindow($"title {WindowTag}");
+    [RelayCommand] private void WinRestoreTitle() => SendWindow("title");
+    [RelayCommand] private void WinTopmostOn() => SendWindow("topmost on");
+    [RelayCommand] private void WinTopmostOff() => SendWindow("topmost off");
+    [RelayCommand] private void WinMinimize() => SendWindow("show min");
+    [RelayCommand] private void WinMaximize() => SendWindow("show max");
+    [RelayCommand] private void WinRestoreWindow() => SendWindow("show restore");
+    [RelayCommand] private void WinFlash() => SendWindow("flash");
+    [RelayCommand] private void WinOverlay() => SendWindow($"overlay {OverlayText}");
+    [RelayCommand] private void WinHideOverlay() => SendWindow("overlay");
+
+    /// <summary>Fire one command at the in-process window plugin's control pipe. Runs off the UI
+    /// thread with a short connect timeout, so a missing/absent plugin never hangs the dashboard.</summary>
+    private void SendWindow(string command)
+    {
+        WindowStatus = $"→ {command} …";
+        _ = Task.Run(() =>
+        {
+            string result;
+            try
+            {
+                using var pipe = new System.IO.Pipes.NamedPipeClientStream(
+                    ".", WindowPipe, System.IO.Pipes.PipeDirection.Out);
+                pipe.Connect(500);
+                using var w = new System.IO.StreamWriter(pipe) { AutoFlush = true };
+                w.WriteLine(command);
+                result = $"sent  ·  {command}";
+            }
+            catch (TimeoutException)
+            {
+                result = "No window plugin listening on \\\\.\\pipe\\rdpeek-window — register " +
+                         "src/Rdpeek.WindowPlugin and connect an RDP session (it loads in-process on Connect).";
+            }
+            catch (Exception ex) { result = "Window plugin error: " + ex.Message; }
+            _dispatcher.TryEnqueue(() => WindowStatus = result);
+        });
     }
 
     [RelayCommand]

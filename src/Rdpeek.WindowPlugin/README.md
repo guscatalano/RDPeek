@@ -54,11 +54,32 @@ Commands are newline- or message-delimited UTF-8:
 
 Diagnostics log: `%TEMP%\rdpeek-window-plugin.log`.
 
+## Driving it from the Companion
+
+The Companion (`Rdpeek.Companion.WinUI`) has a **Window** tab (under *Actions*) that is the client end
+of this pipe: buttons for title tag/restore, minimize/maximize/restore, topmost on/off, taskbar flash,
+and a HUD overlay text box. It connects to `\\.\pipe\rdpeek-window` per command (connect-write-close),
+off the UI thread, so a missing plugin never hangs the dashboard.
+
+## Lifecycle (verified live against the mock)
+
+mstsc loads the DLL in-process and calls `IWTSPlugin::Initialize` — then **releases the plugin object
+right away**, because we never create a DVC channel listener. So `Connected`/`Disconnected`/`Terminated`
+generally never fire. That's fine by design: the class factory starts the UI + pipe + attach threads,
+which **outlive the COM object** (`DllCanUnloadNow` returns `S_FALSE`, so the DLL stays mapped), and an
+`AttachThread` binds to the session window and captures its real title independently of `Connected`.
+The pipe drives everything from there. Confirmed end-to-end: title tag+restore, show state, topmost,
+flash and the overlay all act on the live `mstsc` window.
+
 ## Notes / gotchas
 
 - **CLSID** `{7B6D1E44-9C1A-4C7E-9E2B-11A0C0FFEE03}`, distinct from the diag plugin (`…EE01`) and
   the mock's echo client (`…EE02`). **IWTSPlugin** IID `A1230201-1439-4e62-a414-190d0ac3d40e`.
-- `DllCanUnloadNow` returns `S_FALSE` on purpose: background UI + pipe threads outlive the COM
-  objects, so the DLL must stay mapped until the process exits rather than be unloaded from under
-  them. That's normal for a plugin DLL with background threads.
+- The control pipe is a single fixed instance (`nMaxInstances = 1`). With several mstsc windows (each
+  its own process), only the first plugin instance wins the pipe; per-PID pipe names would be the fix
+  for driving a specific window in a multi-connection setup. Single-window works today.
+- `DllCanUnloadNow` returns `S_FALSE` on purpose (see Lifecycle): background threads outlive the COM
+  objects, so the DLL must stay mapped rather than be unloaded from under them.
+- Because the object is released after `Initialize`, mstsc keeps the DLL locked for the life of the
+  process — to rebuild, close that `mstsc` first.
 - x64 only, to match `mstsc`.

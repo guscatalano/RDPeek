@@ -58,6 +58,7 @@
                 <muxc:NavigationViewItem Content="Link" Tag="link" />
                 <muxc:NavigationViewItemHeader Content="Actions" />
                 <muxc:NavigationViewItem Content="Shell" Tag="shell" />
+                <muxc:NavigationViewItem Content="Window" Tag="window" />
             </muxc:NavigationView.MenuItems>
 
             <Grid Margin="0,12,0,0">
@@ -875,6 +876,63 @@
                                         IsEnabled="{x:Bind Vm.ShellEnabled, Mode=OneWay}" Style="{ThemeResource AccentButtonStyle}" />
                             </Grid>
                         </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- ===================== WINDOW (in-process plugin) ===================== -->
+                <Grid x:Name="WindowView" Visibility="Collapsed">
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel Margin="16" Spacing="14">
+                                <TextBlock Text="mstsc window control" FontSize="18" FontWeight="SemiBold" />
+                                <TextBlock TextWrapping="Wrap" Opacity="0.8"
+                                           Text="The out-of-process diagnostics plugin is crash-isolated but can't touch the mstsc window. This drives the tiny in-process Rdpeek.WindowPlugin, which mstsc loads into its own process, over \\.\pipe\rdpeek-window." />
+
+                                <!-- Title -->
+                                <TextBlock Text="Window title" FontWeight="SemiBold" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" PlaceholderText="tag to append to the title…"
+                                             Text="{x:Bind Vm.WindowTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <Button Grid.Column="1" Content="Tag title" Command="{x:Bind Vm.WinTagCommand}"
+                                            Style="{ThemeResource AccentButtonStyle}" />
+                                    <Button Grid.Column="2" Content="Restore" Command="{x:Bind Vm.WinRestoreTitleCommand}" />
+                                </Grid>
+
+                                <!-- State -->
+                                <TextBlock Text="Window state" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Minimize" Command="{x:Bind Vm.WinMinimizeCommand}" />
+                                    <Button Content="Maximize" Command="{x:Bind Vm.WinMaximizeCommand}" />
+                                    <Button Content="Restore" Command="{x:Bind Vm.WinRestoreWindowCommand}" />
+                                    <Button Content="Flash taskbar" Command="{x:Bind Vm.WinFlashCommand}" />
+                                    <Button Content="Topmost on" Command="{x:Bind Vm.WinTopmostOnCommand}" />
+                                    <Button Content="Topmost off" Command="{x:Bind Vm.WinTopmostOffCommand}" />
+                                </StackPanel>
+
+                                <!-- Overlay -->
+                                <TextBlock Text="HUD overlay" FontWeight="SemiBold" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" PlaceholderText="overlay banner text…"
+                                             Text="{x:Bind Vm.OverlayText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <Button Grid.Column="1" Content="Show overlay" Command="{x:Bind Vm.WinOverlayCommand}"
+                                            Style="{ThemeResource AccentButtonStyle}" />
+                                    <Button Grid.Column="2" Content="Hide" Command="{x:Bind Vm.WinHideOverlayCommand}" />
+                                </Grid>
+
+                                <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                        CornerRadius="6" Padding="12,8" Margin="0,4,0,0">
+                                    <TextBlock TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"
+                                               Text="{x:Bind Vm.WindowStatus, Mode=OneWay}" />
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
                     </Border>
                 </Grid>
 
