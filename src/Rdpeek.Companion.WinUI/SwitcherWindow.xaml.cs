@@ -37,6 +37,18 @@ public sealed partial class SwitcherWindow : Window
         // Dock to the left edge of the primary work area (full height, minus the taskbar).
         var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
         AppWindow.MoveAndResize(new RectInt32(work.X, work.Y, 250, work.Height));
+
+        Activated += OnActivated;
+    }
+
+    private bool _wasActivated;
+
+    /// <summary>Auto-hide when the panel loses focus (clicking a session, the dashboard, or anywhere
+    /// else). Guarded by _wasActivated so the initial show doesn't hide it before it's ever focused.</summary>
+    private void OnActivated(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState != WindowActivationState.Deactivated) { _wasActivated = true; return; }
+        if (_wasActivated) HideRequested?.Invoke();
     }
 
     private void OnItemClick(object sender, ItemClickEventArgs e)

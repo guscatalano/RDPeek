@@ -14,9 +14,10 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         Title = "RDPeek Companion";
 
-        // Reveal the switcher when the cursor is shoved into the left edge (mid-screen), without
-        // stealing focus. The poll thread's callback marshals onto the UI thread.
-        _edge = new EdgeTrigger(() => DispatcherQueue.TryEnqueue(() => ShowSwitcher(activate: false)));
+        // Reveal the switcher (focused) when the cursor is shoved into the left edge (mid-screen). It
+        // auto-hides on blur, so it must take focus to be dismissable that way. Poll-thread callback
+        // marshals onto the UI thread.
+        _edge = new EdgeTrigger(() => DispatcherQueue.TryEnqueue(() => ShowSwitcher()));
         Closed += (_, _) => _edge?.Dispose();
     }
 
