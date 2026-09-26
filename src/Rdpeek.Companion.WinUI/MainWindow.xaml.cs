@@ -63,4 +63,23 @@ public sealed partial class MainWindow : Window
 
     /// <summary>x:Bind function helper: WinUI has no built-in bool→Visibility converter.</summary>
     public Visibility VisibleIf(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
+
+    private SwitcherWindow? _switcher;
+
+    /// <summary>Toggle the left-edge overlay switcher. It shares this window's view model, so it lists
+    /// the same live connections and clicking one drives the same activation path.</summary>
+    private void OnToggleSwitcher(object sender, RoutedEventArgs e)
+    {
+        if (_switcher is null)
+        {
+            _switcher = new SwitcherWindow(Vm);
+            _switcher.Closed += (_, _) => _switcher = null;
+            _switcher.Activate();
+        }
+        else
+        {
+            _switcher.Close();
+            _switcher = null;
+        }
+    }
 }

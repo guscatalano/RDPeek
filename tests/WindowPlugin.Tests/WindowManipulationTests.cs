@@ -253,6 +253,17 @@ public sealed class WindowManipulationTests : IClassFixture<WindowPluginFixture>
     }
 
     [Fact]
+    public void Foreground_command_restores_and_activates_the_window()
+    {
+        // foreground brings the window forward; the deterministic, headless-safe part is that it
+        // un-minimizes a minimized window (SetForegroundWindow focus itself isn't reliable in CI).
+        _f.Send("show min");
+        Assert.True(WindowPluginFixture.WaitFor(() => _f.IsMinimized()), "precondition: window should minimize");
+        _f.Send("foreground");
+        Assert.True(WindowPluginFixture.WaitFor(() => !_f.IsMinimized()), "foreground did not restore the window");
+    }
+
+    [Fact]
     public void Overlay_hud_window_is_created()
     {
         // The plugin creates a topmost "RdpeekOverlay" HUD; asking for it must not throw and it exists.

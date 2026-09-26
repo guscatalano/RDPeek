@@ -249,6 +249,8 @@ public partial class MainViewModel : ObservableObject
         "Register src/Rdpeek.WindowPlugin and connect an RDP session, then use these controls.";
     [ObservableProperty] private bool _windowControlEnabled;
     [ObservableProperty] private string _windowTarget = "No RDP window selected.";
+    private readonly HotkeyListener _hotkeys;
+    [ObservableProperty] private bool _hotkeysEnabled;
 
     // Windows Event Log viewer.
     public ObservableCollection<EventRow> EventLogEntries { get; } = new();
@@ -283,6 +285,11 @@ public partial class MainViewModel : ObservableObject
 
         Refresh();
         _ = RunDiagnostics();   // plugin-registration health, in the background
+
+        // Global switch-window hotkeys (Ctrl+Alt+Right / Left). Fired on the listener thread → marshal.
+        _hotkeys = new HotkeyListener();
+        _hotkeys.Pressed += id => _dispatcher.TryEnqueue(
+            () => CycleConnection(id == HotkeyListener.PrevId ? -1 : +1));
     }
 
     partial void OnSelectedConnectionChanged(ConnectionRow? value)
@@ -724,6 +731,34 @@ public partial class MainViewModel : ObservableObject
             catch (Exception ex) { result = "Window plugin error: " + ex.Message; }
             _dispatcher.TryEnqueue(() => WindowStatus = result);
         });
+    }
+
+    /// <summary>Select a connection and pull its mstsc window to the foreground — used by the sidebar
+    /// switcher and the cycle hotkeys. The bring-to-front runs inside mstsc (the `foreground` command).</summary>
+    [RelayCommand]
+    public void ActivateConnection(ConnectionRow? row)
+    {
+        if (row is null) return;
+        SelectedConnection = row;
+        if (row.WindowPid > 0) SendWindow("foreground");
+    }
+
+    /// <summary>Cycle the selection forward/backward through the open connections and activate it.</summary>
+    public void CycleConnection(int direction)
+    {
+        int n = Connections.Count;
+        if (n == 0) return;
+        int idx = SelectedConnection is null ? -1 : Connections.IndexOf(SelectedConnection);
+        int next = ((idx + direction) % n + n) % n;
+        ActivateConnection(Connections[next]);
+    }
+
+    partial void OnHotkeysEnabledChanged(bool value)
+    {
+        if (value) _hotkeys.Enable(); else _hotkeys.Disable();
+        WindowStatus = value
+            ? "Switch-window hotkeys on: Ctrl+Alt+Right / Ctrl+Alt+Left cycle connections."
+            : "Switch-window hotkeys off.";
     }
 
     [RelayCommand]

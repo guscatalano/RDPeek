@@ -894,6 +894,15 @@
                                     <TextBlock TextWrapping="Wrap" FontSize="12" Text="{x:Bind Vm.WindowTarget, Mode=OneWay}" />
                                 </Border>
 
+                                <!-- Multi-window switching (works across connections, not gated on selection) -->
+                                <TextBlock Text="Switch between windows" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                    <Button Content="Show switcher sidebar" Click="OnToggleSwitcher"
+                                            ToolTipService.ToolTip="A left-edge overlay listing every RDP window; click one to bring it forward" />
+                                    <ToggleSwitch IsOn="{x:Bind Vm.HotkeysEnabled, Mode=TwoWay}"
+                                                  OnContent="Ctrl+Alt+←/→ cycle" OffContent="Ctrl+Alt+←/→ cycle" />
+                                </StackPanel>
+
                                 <!-- ContentControl (a Control, so it has IsEnabled) greys out the whole
                                      group when no connection is selected; Panels have no IsEnabled. -->
                                 <ContentControl IsEnabled="{x:Bind Vm.WindowControlEnabled, Mode=OneWay}"

@@ -182,6 +182,23 @@ static DWORD WINAPI AttachThread(LPVOID)
     return 0;
 }
 
+// Pull a window to the foreground reliably. SetForegroundWindow alone is blocked by Windows' focus-
+// steal lock when we aren't the foreground app; briefly attaching to the current foreground thread's
+// input queue lifts that. Runs from inside mstsc, so this is our own window.
+static void ForceForeground(HWND h)
+{
+    if (!h || !IsWindow(h)) return;
+    if (IsIconic(h)) ShowWindow(h, SW_RESTORE);
+    HWND fg = GetForegroundWindow();
+    DWORD fgTid = fg ? GetWindowThreadProcessId(fg, nullptr) : 0;
+    DWORD myTid = GetCurrentThreadId();
+    bool attached = fgTid && fgTid != myTid && AttachThreadInput(myTid, fgTid, TRUE);
+    BringWindowToTop(h);
+    SetForegroundWindow(h);
+    SetActiveWindow(h);
+    if (attached) AttachThreadInput(myTid, fgTid, FALSE);
+}
+
 // ---- command execution ---------------------------------------------------------------------------
 static void Execute(const std::string& line)
 {
@@ -208,6 +225,8 @@ static void Execute(const std::string& line)
         ShowWindow(g_mstsc, arg == "min" ? SW_MINIMIZE : arg == "max" ? SW_MAXIMIZE : SW_RESTORE);
     } else if (verb == "flash") {
         FLASHWINFO fi = { sizeof(fi), g_mstsc, FLASHW_ALL, 3, 0 }; FlashWindowEx(&fi);
+    } else if (verb == "foreground") {
+        ForceForeground(g_mstsc);           // used by the Companion's switch-window hotkey
     } else if (verb == "overlay") {
         g_overlayText = arg.empty() ? L"" : Widen(arg);
         ShowOverlay(!arg.empty());

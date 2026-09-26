@@ -36,6 +36,7 @@ mstsc process id). Commands are newline- or message-delimited UTF-8:
 | `show min\|max\|restore` | window state |
 | `overlay <text>` | show/update the HUD banner (empty text hides it) |
 | `flash` | flash the taskbar button |
+| `foreground` | restore + pull the window to the front (used by the Companion's switcher / cycle hotkeys) |
 
 ```powershell
 # $pid here is the target mstsc's process id (the plugin logs its pipe name on load)
@@ -64,6 +65,12 @@ and a HUD overlay text box. It targets the connection **selected on the Overview
 mstsc's pid from the RDP window and connecting to `\\.\pipe\rdpeek-window-<pid>` per command
 (connect-write-close), off the UI thread, so a missing plugin never hangs the dashboard. The controls
 grey out when no connection is selected.
+
+**Switching between windows.** The Window tab also has a *switcher sidebar* — a thin, borderless,
+always-on-top strip docked to the left edge that lists every open RDP connection; click one to bring
+its mstsc window to the front (it sends `foreground` to that connection's pipe). A global
+**Ctrl+Alt+← / →** hotkey (toggle on the same tab) cycles to the previous / next connection and
+foregrounds it. Both share the dashboard's live connection list.
 
 ## Lifecycle (verified live against the mock)
 
