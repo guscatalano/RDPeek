@@ -24,9 +24,10 @@ Two AddIns, two trade-offs, side by side:
 
 ## Control pipe
 
-A background thread finds mstsc's top-level window (class `TscShellContainerClass`, this PID), shows a
-proof-of-life HUD overlay, and serves a per-process named pipe: `\\.\pipe\rdpeek-window-<pid>` (the
-mstsc process id). Commands are newline- or message-delimited UTF-8:
+A background thread finds mstsc's top-level window (class `TscShellContainerClass`, this PID) and serves
+a per-process named pipe: `\\.\pipe\rdpeek-window-<pid>` (the mstsc process id). The HUD overlay is
+on-demand — shown only by the `overlay` command, never automatically. Commands are newline- or
+message-delimited UTF-8:
 
 | command | effect |
 |---|---|

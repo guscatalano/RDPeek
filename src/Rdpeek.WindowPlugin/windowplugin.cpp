@@ -170,13 +170,11 @@ static void ShowOverlay(bool show) { if (g_overlay) PostMessageW(g_overlay, WM_R
 // the Companion. After that the pipe drives everything.
 static DWORD WINAPI AttachThread(LPVOID)
 {
+    // Just bind to the window. The HUD overlay is on-demand (the `overlay` command) — auto-showing a
+    // banner across every session on connect was confusing, so proof-of-life is the log line instead.
     for (int i = 0; i < 150 && WaitForSingleObject(g_stop, 0) != WAIT_OBJECT_0; ++i) {
         EnsureAttached();
-        if (g_mstsc) {
-            g_overlayText = L"RDPeek  ·  window plugin running in-process";
-            ShowOverlay(true);
-            return 0;
-        }
+        if (g_mstsc) return 0;
         Sleep(200);
     }
     return 0;
@@ -297,8 +295,6 @@ public:
     virtual HRESULT STDMETHODCALLTYPE Connected() {   // best-effort: rarely called (see Initialize)
         Log("Connected");
         EnsureAttached();
-        g_overlayText = L"RDPeek  ·  window plugin running in-process";
-        ShowOverlay(true);
         return S_OK;
     }
     virtual HRESULT STDMETHODCALLTYPE Disconnected(DWORD code) { Log("Disconnected %lu", code); Restore(); return S_OK; }
