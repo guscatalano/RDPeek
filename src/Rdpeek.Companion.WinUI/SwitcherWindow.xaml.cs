@@ -15,6 +15,10 @@ public sealed partial class SwitcherWindow : Window
 {
     public MainViewModel Vm { get; }
 
+    /// <summary>Raised when the user clicks Hide; the owner hides (not closes) the window so the edge
+    /// trigger can bring the same instance back.</summary>
+    public event Action? HideRequested;
+
     public SwitcherWindow(MainViewModel vm)
     {
         Vm = vm;
@@ -40,4 +44,6 @@ public sealed partial class SwitcherWindow : Window
         if (e.ClickedItem is ConnectionRow row)
             Vm.ActivateConnectionCommand.Execute(row);
     }
+
+    private void OnHide(object sender, RoutedEventArgs e) => HideRequested?.Invoke();
 }

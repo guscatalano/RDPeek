@@ -13,6 +13,11 @@ public sealed partial class MainWindow : Window
         Vm = new MainViewModel(DispatcherQueue);
         InitializeComponent();
         Title = "RDPeek Companion";
+
+        // Reveal the switcher when the cursor is shoved into the left edge (mid-screen), without
+        // stealing focus. The poll thread's callback marshals onto the UI thread.
+        _edge = new EdgeTrigger(() => DispatcherQueue.TryEnqueue(() => ShowSwitcher(activate: false)));
+        Closed += (_, _) => _edge?.Dispose();
     }
 
     private void OnNavChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -65,21 +70,38 @@ public sealed partial class MainWindow : Window
     public Visibility VisibleIf(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
 
     private SwitcherWindow? _switcher;
+    private readonly EdgeTrigger _edge;
+    private bool _switcherVisible;
 
-    /// <summary>Toggle the left-edge overlay switcher. It shares this window's view model, so it lists
-    /// the same live connections and clicking one drives the same activation path.</summary>
+    /// <summary>The switcher is created once and shown/hidden (not closed), so the edge trigger and the
+    /// Hide button drive the same instance. It shares this window's view model, so it lists the same
+    /// live connections and clicking one runs the same activation path.</summary>
+    private void EnsureSwitcher()
+    {
+        if (_switcher is not null) return;
+        _switcher = new SwitcherWindow(Vm);
+        _switcher.HideRequested += HideSwitcher;
+        _switcher.Closed += (_, _) => { _switcher = null; _switcherVisible = false; };
+    }
+
+    private void ShowSwitcher(bool activate = true)
+    {
+        if (_switcherVisible) return;
+        EnsureSwitcher();
+        _switcher!.AppWindow.Show(activate);
+        if (activate) _switcher.Activate();
+        _switcherVisible = true;
+    }
+
+    private void HideSwitcher()
+    {
+        if (_switcher is null) return;
+        _switcher.AppWindow.Hide();
+        _switcherVisible = false;
+    }
+
     private void OnToggleSwitcher(object sender, RoutedEventArgs e)
     {
-        if (_switcher is null)
-        {
-            _switcher = new SwitcherWindow(Vm);
-            _switcher.Closed += (_, _) => _switcher = null;
-            _switcher.Activate();
-        }
-        else
-        {
-            _switcher.Close();
-            _switcher = null;
-        }
+        if (_switcherVisible) HideSwitcher(); else ShowSwitcher();
     }
 }

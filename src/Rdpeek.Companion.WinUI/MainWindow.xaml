@@ -897,8 +897,8 @@
                                 <!-- Multi-window switching (works across connections, not gated on selection) -->
                                 <TextBlock Text="Switch between windows" FontWeight="SemiBold" />
                                 <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                                    <Button Content="Show switcher sidebar" Click="OnToggleSwitcher"
-                                            ToolTipService.ToolTip="A left-edge overlay listing every RDP window; click one to bring it forward" />
+                                    <Button Content="Switcher sidebar" Click="OnToggleSwitcher"
+                                            ToolTipService.ToolTip="Show/hide a left-edge overlay listing every RDP window; click one to bring it forward. Also reveals when you shove the cursor into the left edge (mid-screen)." />
                                     <ToggleSwitch IsOn="{x:Bind Vm.HotkeysEnabled, Mode=TwoWay}"
                                                   OnContent="Ctrl+Alt+←/→ cycle" OffContent="Ctrl+Alt+←/→ cycle" />
                                 </StackPanel>

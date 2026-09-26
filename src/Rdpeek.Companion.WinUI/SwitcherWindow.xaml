@@ -13,11 +13,19 @@
         </Grid.RowDefinitions>
 
         <!-- header -->
-        <StackPanel Grid.Row="0" Padding="14,12,14,8" Spacing="1"
-                    Background="{ThemeResource LayerFillColorDefaultBrush}">
-            <TextBlock Text="RDP windows" FontWeight="SemiBold" FontSize="15" />
-            <TextBlock Text="click to bring a session forward" Opacity="0.6" FontSize="11" />
-        </StackPanel>
+        <Grid Grid.Row="0" Padding="14,12,10,8" Background="{ThemeResource LayerFillColorDefaultBrush}"
+              ColumnSpacing="6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Spacing="1">
+                <TextBlock Text="RDP windows" FontWeight="SemiBold" FontSize="15" />
+                <TextBlock Text="click to bring a session forward" Opacity="0.6" FontSize="11" />
+            </StackPanel>
+            <Button Grid.Column="1" Click="OnHide" VerticalAlignment="Top" Padding="8,4"
+                    Content="Hide ‹" ToolTipService.ToolTip="Hide the sidebar (shove the cursor to the left edge to bring it back)" />
+        </Grid>
 
         <!-- one row per open RDP connection -->
         <ListView Grid.Row="1" x:Name="List" ItemsSource="{x:Bind Vm.Connections}"
@@ -47,6 +55,6 @@
         </ListView>
 
         <TextBlock Grid.Row="2" Padding="14,8" FontSize="11" Opacity="0.55" TextWrapping="Wrap"
-                   Text="Ctrl+Alt+← / → also cycle. Needs the in-process window plugin registered." />
+                   Text="Ctrl+Alt+← / → cycle. Hide it, then shove the cursor to the left edge (mid-screen) to reveal. Needs the in-process window plugin registered." />
     </Grid>
 </Window>
