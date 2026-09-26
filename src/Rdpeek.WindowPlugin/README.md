@@ -39,6 +39,7 @@ message-delimited UTF-8:
 | `flash` | flash the taskbar button |
 | `foreground` | restore + pull the window to the front |
 | `fullscreen` | foreground the window and ensure it's fullscreen (mstsc Ctrl+Alt+Break toggle, only if not already covering the monitor) — used by the switcher |
+| `bbar show\|hide` | show/hide mstsc's own fullscreen connection bar (only if it exists — i.e. not launched with `displayconnectionbar:i:0`) |
 
 ```powershell
 # $pid here is the target mstsc's process id (the plugin logs its pipe name on load)
@@ -76,7 +77,9 @@ machine (each session restores to fullscreen when you switch back). A small, sub
 sits at the left edge (mid-screen) as a hint — hover it to reveal the sidebar. The sidebar **auto-hides
 when the pointer leaves it or it loses focus**, can also be revealed by shoving the cursor into the left
 edge, and has a **Hide** button. A global **Ctrl+Alt+← / →** hotkey (toggle on the same tab) cycles to
-the previous / next connection and switches to it. Everything shares the dashboard's live connection list.
+the previous / next connection and switches to it. **Auto-cycle** rotates through the sessions every 5s,
+and a **connection-bar** toggle shows/hides mstsc's own bar on every session (needs the bar enabled at
+launch; mstsc may still re-reveal it on mouse-to-top). Everything shares the dashboard's live connection list.
 
 > Tip: for the cleanest fullscreen switching, set `displayconnectionbar:i:0` in your `.rdp` to hide
 > mstsc's own connection bar — the switcher gives you a better way to move between and exit sessions.

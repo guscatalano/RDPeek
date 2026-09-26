@@ -95,6 +95,21 @@ static HWND FindMstscWindow()
     return ctx.found;
 }
 
+// mstsc's fullscreen connection bar ("BBar") lives in the same process as a sibling window.
+static HWND FindBBar()
+{
+    struct Ctx { DWORD pid; HWND found; } ctx{ GetCurrentProcessId(), nullptr };
+    EnumWindows([](HWND h, LPARAM lp) -> BOOL {
+        auto* c = reinterpret_cast<Ctx*>(lp);
+        DWORD pid = 0; GetWindowThreadProcessId(h, &pid);
+        if (pid != c->pid) return TRUE;
+        wchar_t cls[64] = {}; GetClassNameW(h, cls, 64);
+        if (wcscmp(cls, L"BBarWindowClass") == 0) { c->found = h; return FALSE; }
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(&ctx));
+    return ctx.found;
+}
+
 // Bind to mstsc's session window and remember its real title — exactly once. Callable from any
 // thread; the first caller to see the window wins the original-title capture. We can't rely on
 // IWTSPlugin::Connected for this: mstsc releases the plugin object right after Initialize (we never
@@ -272,6 +287,8 @@ static void Execute(const std::string& line)
         ShowWindow(g_mstsc, arg == "min" ? SW_MINIMIZE : arg == "max" ? SW_MAXIMIZE : SW_RESTORE);
     } else if (verb == "flash") {
         FLASHWINFO fi = { sizeof(fi), g_mstsc, FLASHW_ALL, 3, 0 }; FlashWindowEx(&fi);
+    } else if (verb == "bbar") {
+        if (HWND b = FindBBar()) ShowWindow(b, arg == "hide" ? SW_HIDE : SW_SHOW);
     } else if (verb == "foreground") {
         ForceForeground(g_mstsc);           // used by the Companion's switch-window hotkey
     } else if (verb == "fullscreen") {

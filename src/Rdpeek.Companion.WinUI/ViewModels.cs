@@ -254,6 +254,9 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _windowTarget = "No RDP window selected.";
     private readonly HotkeyListener _hotkeys;
     [ObservableProperty] private bool _hotkeysEnabled;
+    private DispatcherQueueTimer? _cycleTimer;
+    [ObservableProperty] private bool _autoCycle;               // rotate through sessions on a timer
+    [ObservableProperty] private bool _showConnectionBar;       // toggle mstsc's own connection bar
 
     // Windows Event Log viewer.
     public ObservableCollection<EventRow> EventLogEntries { get; } = new();
@@ -778,6 +781,29 @@ public partial class MainViewModel : ObservableObject
         WindowStatus = value
             ? "Switch-window hotkeys on: Ctrl+Alt+Right / Ctrl+Alt+Left cycle connections."
             : "Switch-window hotkeys off.";
+    }
+
+    partial void OnAutoCycleChanged(bool value)
+    {
+        _cycleTimer ??= CreateCycleTimer();
+        if (value) { _cycleTimer.Start(); WindowStatus = "Auto-cycle on — rotating sessions every 5s."; }
+        else { _cycleTimer.Stop(); WindowStatus = "Auto-cycle off."; }
+    }
+
+    private DispatcherQueueTimer CreateCycleTimer()
+    {
+        var t = _dispatcher.CreateTimer();
+        t.Interval = TimeSpan.FromSeconds(5);
+        t.Tick += (_, _) => CycleConnection(+1);
+        return t;
+    }
+
+    partial void OnShowConnectionBarChanged(bool value)
+    {
+        // Toggle mstsc's own connection bar on every session.
+        foreach (var c in Connections)
+            if (c.WindowPid > 0) SendWindowTo(c.WindowPid, value ? "bbar show" : "bbar hide");
+        WindowStatus = value ? "Connection bar shown on all sessions." : "Connection bar hidden on all sessions.";
     }
 
     [RelayCommand]
