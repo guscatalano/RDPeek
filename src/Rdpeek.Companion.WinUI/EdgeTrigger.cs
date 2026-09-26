@@ -22,7 +22,11 @@ public sealed class EdgeTrigger : IDisposable
     private readonly Action _onTrigger;
     private readonly Thread _thread;
     private volatile bool _run = true;
+    private volatile bool _dockRight;
     private bool _armed = true;
+
+    /// <summary>Which edge to watch — false = left (default), true = right.</summary>
+    public bool DockRight { get => _dockRight; set => _dockRight = value; }
 
     public EdgeTrigger(Action onTrigger)
     {
@@ -40,15 +44,17 @@ public sealed class EdgeTrigger : IDisposable
                 if (GetCursorPos(out var p))
                 {
                     RECT wa = default;
-                    int left = 0, top = 0, bottom = 1080;
-                    if (SystemParametersInfoW(SPI_GETWORKAREA, 0, ref wa, 0)) { left = wa.Left; top = wa.Top; bottom = wa.Bottom; }
+                    int left = 0, top = 0, right = 1920, bottom = 1080;
+                    if (SystemParametersInfoW(SPI_GETWORKAREA, 0, ref wa, 0)) { left = wa.Left; top = wa.Top; right = wa.Right; bottom = wa.Bottom; }
 
                     int centerY = (top + bottom) / 2;
                     int band = Math.Max(120, (bottom - top) / 6);           // a tall zone around the middle
-                    bool inZone = p.X <= left + 2 && Math.Abs(p.Y - centerY) <= band;
+                    bool nearMid = Math.Abs(p.Y - centerY) <= band;
+                    bool inZone = _dockRight ? (p.X >= right - 2 && nearMid) : (p.X <= left + 2 && nearMid);
+                    bool pulledAway = _dockRight ? (p.X < right - 40) : (p.X > left + 40);
 
                     if (inZone && _armed) { _armed = false; _onTrigger(); }
-                    else if (p.X > left + 40) { _armed = true; }            // re-arm after pulling away
+                    else if (pulledAway) { _armed = true; }                 // re-arm after pulling away
                 }
             }
             catch { /* transient Win32 hiccup — keep polling */ }

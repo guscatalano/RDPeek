@@ -20,11 +20,14 @@ public sealed partial class MainWindow : Window
         _edge = new EdgeTrigger(() => DispatcherQueue.TryEnqueue(() => ShowSwitcher()));
         Closed += (_, _) => _edge?.Dispose();
 
-        // A visible nub at the left edge shows where to aim; hovering it reveals the sidebar.
+        // A visible nub at the edge shows where to aim; hovering it reveals the sidebar.
         _handle = new EdgeHandleWindow();
         _handle.RevealRequested += () => DispatcherQueue.TryEnqueue(() => ShowSwitcher());
         _handle.AppWindow.Show(false);
         Closed += (_, _) => { try { _handle?.Close(); } catch { } };
+
+        // Let the user dock the whole thing to the right edge instead of the left.
+        Vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(MainViewModel.DockRight)) ApplyDock(); };
     }
 
     private void OnNavChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -90,6 +93,15 @@ public sealed partial class MainWindow : Window
         _switcher = new SwitcherWindow(Vm);
         _switcher.HideRequested += HideSwitcher;
         _switcher.Closed += (_, _) => { _switcher = null; _switcherVisible = false; };
+        _switcher.DockTo(Vm.DockRight);
+    }
+
+    /// <summary>Move the nub, panel and reveal edge to the chosen side.</summary>
+    private void ApplyDock()
+    {
+        _edge.DockRight = Vm.DockRight;
+        _handle.DockTo(Vm.DockRight);
+        _switcher?.DockTo(Vm.DockRight);
     }
 
     private void ShowSwitcher(bool activate = true)

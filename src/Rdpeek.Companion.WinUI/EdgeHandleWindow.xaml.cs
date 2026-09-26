@@ -51,9 +51,19 @@ public sealed partial class EdgeHandleWindow : Window
         _proc = HandleWndProc;
         _prevProc = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, Marshal.GetFunctionPointerForDelegate(_proc));
 
-        const int w = 10, h = 72;   // subtle sliver
+        DockTo(false);
+    }
+
+    private const int NubW = 10, NubH = 72;   // subtle sliver
+
+    /// <summary>Dock the nub to the left (default) or right edge, mid-screen, with its rounded corner
+    /// facing inward.</summary>
+    public void DockTo(bool right)
+    {
         var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
-        AppWindow.MoveAndResize(new RectInt32(work.X, work.Y + (work.Height - h) / 2, w, h));
+        int x = right ? work.X + work.Width - NubW : work.X;
+        AppWindow.MoveAndResize(new RectInt32(x, work.Y + (work.Height - NubH) / 2, NubW, NubH));
+        Nub.CornerRadius = right ? new CornerRadius(4, 0, 0, 4) : new CornerRadius(0, 4, 4, 0);
     }
 
     private IntPtr HandleWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)

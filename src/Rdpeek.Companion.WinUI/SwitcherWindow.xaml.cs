@@ -35,11 +35,18 @@ public sealed partial class SwitcherWindow : Window
             p.IsMinimizable = false;
         }
 
-        // Dock to the left edge of the primary work area (full height, minus the taskbar).
-        var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
-        AppWindow.MoveAndResize(new RectInt32(work.X, work.Y, 250, work.Height));
-
+        DockTo(false);
         Activated += OnActivated;
+    }
+
+    private const int PanelWidth = 250;
+
+    /// <summary>Dock the panel to the left (default) or right edge of the primary work area.</summary>
+    public void DockTo(bool right)
+    {
+        var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+        int x = right ? work.X + work.Width - PanelWidth : work.X;
+        AppWindow.MoveAndResize(new RectInt32(x, work.Y, PanelWidth, work.Height));
     }
 
     private bool _wasActivated;

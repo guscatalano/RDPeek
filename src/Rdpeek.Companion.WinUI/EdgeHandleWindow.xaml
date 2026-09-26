@@ -6,7 +6,7 @@
 
     <Grid x:Name="Root" Background="Transparent"
           PointerEntered="OnReveal" PointerPressed="OnReveal">
-        <!-- a subtle translucent sliver at the left edge, hinting where to aim the cursor -->
-        <Border Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="0,4,4,0" Opacity="0.45" />
+        <!-- a subtle translucent sliver at the edge, hinting where to aim the cursor -->
+        <Border x:Name="Nub" Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="0,4,4,0" Opacity="0.45" />
     </Grid>
 </Window>

@@ -905,6 +905,8 @@
                                                   OnContent="Auto-cycle (5s)" OffContent="Auto-cycle" />
                                     <ToggleSwitch IsOn="{x:Bind Vm.ShowConnectionBar, Mode=TwoWay}"
                                                   OnContent="mstsc connection bar" OffContent="mstsc connection bar" />
+                                    <ToggleSwitch IsOn="{x:Bind Vm.DockRight, Mode=TwoWay}"
+                                                  OnContent="Dock right" OffContent="Dock left" />
                                 </StackPanel>
 
                                 <!-- ContentControl (a Control, so it has IsEnabled) greys out the whole
