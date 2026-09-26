@@ -887,8 +887,18 @@
                             <StackPanel Margin="16" Spacing="14">
                                 <TextBlock Text="mstsc window control" FontSize="18" FontWeight="SemiBold" />
                                 <TextBlock TextWrapping="Wrap" Opacity="0.8"
-                                           Text="The out-of-process diagnostics plugin is crash-isolated but can't touch the mstsc window. This drives the tiny in-process Rdpeek.WindowPlugin, which mstsc loads into its own process, over \\.\pipe\rdpeek-window." />
+                                           Text="The out-of-process diagnostics plugin is crash-isolated but can't touch the mstsc window. This drives the tiny in-process Rdpeek.WindowPlugin, which mstsc loads into its own process. Each connection has its own control pipe, keyed by mstsc pid; commands go to the connection selected on the Overview tab." />
 
+                                <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                        CornerRadius="6" Padding="12,8">
+                                    <TextBlock TextWrapping="Wrap" FontSize="12" Text="{x:Bind Vm.WindowTarget, Mode=OneWay}" />
+                                </Border>
+
+                                <!-- ContentControl (a Control, so it has IsEnabled) greys out the whole
+                                     group when no connection is selected; Panels have no IsEnabled. -->
+                                <ContentControl IsEnabled="{x:Bind Vm.WindowControlEnabled, Mode=OneWay}"
+                                                HorizontalContentAlignment="Stretch">
+                                <StackPanel Spacing="14">
                                 <!-- Title -->
                                 <TextBlock Text="Window title" FontWeight="SemiBold" />
                                 <Grid ColumnSpacing="8">
@@ -925,6 +935,8 @@
                                             Style="{ThemeResource AccentButtonStyle}" />
                                     <Button Grid.Column="2" Content="Hide" Command="{x:Bind Vm.WinHideOverlayCommand}" />
                                 </Grid>
+                                </StackPanel>
+                                </ContentControl>
 
                                 <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                                         CornerRadius="6" Padding="12,8" Margin="0,4,0,0">

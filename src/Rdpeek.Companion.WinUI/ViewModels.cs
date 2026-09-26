@@ -18,6 +18,7 @@ namespace Rdpeek.Companion.WinUI;
 public partial class ConnectionRow : ObservableObject
 {
     public IntPtr Hwnd { get; init; }
+    public int WindowPid { get; init; }   // mstsc pid — addresses that window's in-process plugin pipe
     [ObservableProperty] private string _host = "";
     [ObservableProperty] private string _agent = "—";
     [ObservableProperty] private string _window = "";
@@ -245,8 +246,9 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _windowTag = "RDPeek";
     [ObservableProperty] private string _overlayText = "recording…";
     [ObservableProperty] private string _windowStatus =
-        "Drives the in-process window plugin over \\\\.\\pipe\\rdpeek-window. " +
         "Register src/Rdpeek.WindowPlugin and connect an RDP session, then use these controls.";
+    [ObservableProperty] private bool _windowControlEnabled;
+    [ObservableProperty] private string _windowTarget = "No RDP window selected.";
 
     // Windows Event Log viewer.
     public ObservableCollection<EventRow> EventLogEntries { get; } = new();
@@ -286,6 +288,7 @@ public partial class MainViewModel : ObservableObject
     partial void OnSelectedConnectionChanged(ConnectionRow? value)
     {
         UpdateDetails();
+        UpdateWindowTarget();
         // Frames, the probe and the file browser are per-connection and can't be replayed, so reset
         // them for the newly-selected host instead of showing the previous one's data.
         _allFrames.Clear();
@@ -674,11 +677,9 @@ public partial class MainViewModel : ObservableObject
         if (ShellOutput.Length > 200_000) ShellOutput = "…(trimmed)\n" + ShellOutput[^150_000..];
     }
 
-    // ── in-process window plugin (\\.\pipe\rdpeek-window) ─────────────────
+    // ── in-process window plugin (\\.\pipe\rdpeek-window-<pid>) ────────────
     // The out-of-process diag plugin can't touch mstsc's window; the tiny in-process WindowPlugin can,
-    // and takes newline-delimited text commands on this pipe. One-shot connect-write-close per command.
-    private const string WindowPipe = "rdpeek-window";
-
+    // and takes newline-delimited text commands on a per-mstsc pipe. One-shot connect-write-close.
     [RelayCommand] private void WinTag() => SendWindow($"title {WindowTag}");
     [RelayCommand] private void WinRestoreTitle() => SendWindow("title");
     [RelayCommand] private void WinTopmostOn() => SendWindow("topmost on");
@@ -694,6 +695,14 @@ public partial class MainViewModel : ObservableObject
     /// thread with a short connect timeout, so a missing/absent plugin never hangs the dashboard.</summary>
     private void SendWindow(string command)
     {
+        var conn = SelectedConnection;
+        if (conn is null || conn.WindowPid <= 0)
+        {
+            WindowStatus = "Select an RDP connection first (Overview tab).";
+            return;
+        }
+        int pid = conn.WindowPid;
+        string pipeName = $"rdpeek-window-{pid}";
         WindowStatus = $"→ {command} …";
         _ = Task.Run(() =>
         {
@@ -701,7 +710,7 @@ public partial class MainViewModel : ObservableObject
             try
             {
                 using var pipe = new System.IO.Pipes.NamedPipeClientStream(
-                    ".", WindowPipe, System.IO.Pipes.PipeDirection.Out);
+                    ".", pipeName, System.IO.Pipes.PipeDirection.Out);
                 pipe.Connect(500);
                 using var w = new System.IO.StreamWriter(pipe) { AutoFlush = true };
                 w.WriteLine(command);
@@ -709,8 +718,8 @@ public partial class MainViewModel : ObservableObject
             }
             catch (TimeoutException)
             {
-                result = "No window plugin listening on \\\\.\\pipe\\rdpeek-window — register " +
-                         "src/Rdpeek.WindowPlugin and connect an RDP session (it loads in-process on Connect).";
+                result = $"No window plugin on \\\\.\\pipe\\{pipeName} (mstsc pid {pid}) — register " +
+                         "src/Rdpeek.WindowPlugin; it loads in-process when that session connects.";
             }
             catch (Exception ex) { result = "Window plugin error: " + ex.Message; }
             _dispatcher.TryEnqueue(() => WindowStatus = result);
@@ -848,7 +857,7 @@ public partial class MainViewModel : ObservableObject
         {
             seen.Add(w.Hwnd);
             var row = Connections.FirstOrDefault(c => c.Hwnd == w.Hwnd);
-            if (row is null) { row = new ConnectionRow { Hwnd = w.Hwnd }; Connections.Add(row); }
+            if (row is null) { row = new ConnectionRow { Hwnd = w.Hwnd, WindowPid = w.Pid }; Connections.Add(row); }
             row.Host = w.Host;
             row.Window = w.Title;
             row.State = Correlate(w, windows.Count, states, out string agentText);
@@ -865,6 +874,19 @@ public partial class MainViewModel : ObservableObject
         UpdateChannels();
         UpdateStatus(windows.Count, states);
         UpdateConnectionBar();
+        UpdateWindowTarget();
+    }
+
+    /// <summary>Point the Window controls at the selected connection's mstsc, and enable them only
+    /// when there's an RDP window to target. Each mstsc's in-process plugin serves its own pipe.</summary>
+    private void UpdateWindowTarget()
+    {
+        var c = SelectedConnection;
+        WindowControlEnabled = c is not null && c.WindowPid > 0;
+        WindowTarget = c is null || c.WindowPid <= 0
+            ? "No RDP window selected — pick a connection on the Overview tab."
+            : $"Target: {(string.IsNullOrEmpty(c.Window) ? c.Host : c.Window)}   ·   " +
+              $"mstsc pid {c.WindowPid}   ·   \\\\.\\pipe\\rdpeek-window-{c.WindowPid}";
     }
 
     private void UpdateConnectionBar()

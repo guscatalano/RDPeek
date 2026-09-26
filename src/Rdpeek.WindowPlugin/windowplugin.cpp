@@ -47,8 +47,16 @@ static HANDLE  g_attachThread = nullptr;
 
 static const wchar_t* kMstscClass   = L"TscShellContainerClass";
 static const wchar_t* kOverlayClass = L"RdpeekOverlay";
-static const wchar_t* kPipeName     = L"\\\\.\\pipe\\rdpeek-window";
 static const UINT WM_RDPEEK_OVERLAY = WM_APP + 1;   // wparam: 1 = show/update, 0 = hide
+
+// Per-process control pipe, so a viewer can address one specific mstsc window in a multi-connection
+// setup: \\.\pipe\rdpeek-window-<mstsc pid>. The Companion derives the same pid from the RDP window.
+static std::wstring PipeName()
+{
+    wchar_t buf[64];
+    swprintf_s(buf, L"\\\\.\\pipe\\rdpeek-window-%lu", GetCurrentProcessId());
+    return buf;
+}
 
 static void Log(const char* fmt, ...)
 {
@@ -209,9 +217,11 @@ static void Execute(const std::string& line)
 // ---- control pipe --------------------------------------------------------------------------------
 static DWORD WINAPI PipeThread(LPVOID)
 {
+    std::wstring name = PipeName();
+    Log("pipe: listening on %ls", name.c_str());
     while (WaitForSingleObject(g_stop, 0) != WAIT_OBJECT_0)
     {
-        HANDLE pipe = CreateNamedPipeW(kPipeName, PIPE_ACCESS_INBOUND,
+        HANDLE pipe = CreateNamedPipeW(name.c_str(), PIPE_ACCESS_INBOUND,
             PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, 1, 0, 4096, 0, nullptr);
         if (pipe == INVALID_HANDLE_VALUE) { Sleep(500); continue; }
         if (!ConnectNamedPipe(pipe, nullptr) && GetLastError() != ERROR_PIPE_CONNECTED) {

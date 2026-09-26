@@ -24,9 +24,9 @@ Two AddIns, two trade-offs, side by side:
 
 ## Control pipe
 
-On `Connected()` it finds mstsc's top-level window (class `TscShellContainerClass`, this PID), tags
-its title as proof of life, shows a HUD overlay, and serves a named pipe: `\.\pipe\rdpeek-window`.
-Commands are newline- or message-delimited UTF-8:
+A background thread finds mstsc's top-level window (class `TscShellContainerClass`, this PID), shows a
+proof-of-life HUD overlay, and serves a per-process named pipe: `\\.\pipe\rdpeek-window-<pid>` (the
+mstsc process id). Commands are newline- or message-delimited UTF-8:
 
 | command | effect |
 |---|---|
@@ -38,9 +38,11 @@ Commands are newline- or message-delimited UTF-8:
 | `flash` | flash the taskbar button |
 
 ```powershell
-'title hello from the pipe' | Out-File -Encoding ascii \.\pipe\rdpeek-window
-'overlay recording…'        | Out-File -Encoding ascii \.\pipe\rdpeek-window
-'topmost on'                | Out-File -Encoding ascii \.\pipe\rdpeek-window
+# $pid here is the target mstsc's process id (the plugin logs its pipe name on load)
+$pipe = "\\.\pipe\rdpeek-window-$mstscPid"
+'title hello from the pipe' | Out-File -Encoding ascii $pipe
+'overlay recording…'        | Out-File -Encoding ascii $pipe
+'topmost on'                | Out-File -Encoding ascii $pipe
 ```
 
 ## Build & register (Windows, x64, no admin)
@@ -58,8 +60,10 @@ Diagnostics log: `%TEMP%\rdpeek-window-plugin.log`.
 
 The Companion (`Rdpeek.Companion.WinUI`) has a **Window** tab (under *Actions*) that is the client end
 of this pipe: buttons for title tag/restore, minimize/maximize/restore, topmost on/off, taskbar flash,
-and a HUD overlay text box. It connects to `\\.\pipe\rdpeek-window` per command (connect-write-close),
-off the UI thread, so a missing plugin never hangs the dashboard.
+and a HUD overlay text box. It targets the connection **selected on the Overview tab** — deriving that
+mstsc's pid from the RDP window and connecting to `\\.\pipe\rdpeek-window-<pid>` per command
+(connect-write-close), off the UI thread, so a missing plugin never hangs the dashboard. The controls
+grey out when no connection is selected.
 
 ## Lifecycle (verified live against the mock)
 
@@ -75,9 +79,10 @@ flash and the overlay all act on the live `mstsc` window.
 
 - **CLSID** `{7B6D1E44-9C1A-4C7E-9E2B-11A0C0FFEE03}`, distinct from the diag plugin (`…EE01`) and
   the mock's echo client (`…EE02`). **IWTSPlugin** IID `A1230201-1439-4e62-a414-190d0ac3d40e`.
-- The control pipe is a single fixed instance (`nMaxInstances = 1`). With several mstsc windows (each
-  its own process), only the first plugin instance wins the pipe; per-PID pipe names would be the fix
-  for driving a specific window in a multi-connection setup. Single-window works today.
+- The control pipe is **per mstsc process**: `\\.\pipe\rdpeek-window-<pid>`. Each in-process plugin
+  serves its own pipe, so with several mstsc windows the viewer addresses a specific one by that
+  window's pid (the Companion does this from the selected connection). One caveat: a single mstsc
+  process hosting multiple tabbed sessions has one plugin instance / one pipe.
 - `DllCanUnloadNow` returns `S_FALSE` on purpose (see Lifecycle): background threads outlive the COM
   objects, so the DLL must stay mapped rather than be unloaded from under them.
 - Because the object is released after `Initialize`, mstsc keeps the DLL locked for the life of the
