@@ -116,8 +116,11 @@ static void PositionOverlay()
 {
     if (!g_overlay || !g_mstsc || !IsWindow(g_mstsc)) return;
     RECT r; if (!GetWindowRect(g_mstsc, &r)) return;
-    SetWindowPos(g_overlay, HWND_TOPMOST, r.left, r.top, r.right - r.left, 26,
-                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    // A compact chip in the top-left that fits its text — an identity/status label, not a full bar.
+    int w = 20 + (int)g_overlayText.size() * 8;
+    if (w < 60) w = 60;
+    int maxw = r.right - r.left; if (w > maxw) w = maxw;
+    SetWindowPos(g_overlay, HWND_TOPMOST, r.left, r.top, w, 24, SWP_NOACTIVATE | SWP_SHOWWINDOW);
 }
 
 static LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)

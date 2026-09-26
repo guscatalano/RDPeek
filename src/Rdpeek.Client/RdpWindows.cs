@@ -25,8 +25,15 @@ public static class RdpWindows
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int maxCount);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hwnd, StringBuilder text, int maxCount);
+
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+
+    // The top-level session window mstsc hosts each connection in. Other mstsc windows (the fullscreen
+    // connection bar "BBar", tooltips, popups) must NOT be mistaken for separate connections.
+    private const string SessionClass = "TscShellContainerClass";
 
     public static List<RdpWindow> Enumerate()
     {
@@ -43,6 +50,10 @@ public static class RdpWindows
             try { procName = Process.GetProcessById((int)pid).ProcessName; }
             catch { return true; }
             if (!procName.Equals("mstsc", StringComparison.OrdinalIgnoreCase)) return true;
+
+            var cls = new StringBuilder(64);
+            GetClassName(hwnd, cls, cls.Capacity);
+            if (!cls.ToString().Equals(SessionClass, StringComparison.Ordinal)) return true;
 
             var sb = new StringBuilder(len + 1);
             GetWindowText(hwnd, sb, sb.Capacity);

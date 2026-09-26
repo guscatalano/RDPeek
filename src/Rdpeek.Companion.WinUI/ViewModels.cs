@@ -19,6 +19,8 @@ public partial class ConnectionRow : ObservableObject
 {
     public IntPtr Hwnd { get; init; }
     public int WindowPid { get; init; }   // mstsc pid — addresses that window's in-process plugin pipe
+    public int Ordinal { get; init; }     // stable small number to tell same-host sessions apart
+    public string Tag => $"#{Ordinal}";
     [ObservableProperty] private string _host = "";
     [ObservableProperty] private string _agent = "—";
     [ObservableProperty] private string _window = "";
@@ -153,6 +155,7 @@ public partial class MainViewModel : ObservableObject
     private readonly DispatcherQueueTimer _timer;
 
     public ObservableCollection<ConnectionRow> Connections { get; } = new();
+    private int _nextOrdinal = 1;   // hands out stable per-session numbers
     public ObservableCollection<ProcRow> Processes { get; } = new();
     public ObservableCollection<ChannelRow> Channels { get; } = new();
     public ObservableCollection<NetRow> Network { get; } = new();
@@ -908,7 +911,15 @@ public partial class MainViewModel : ObservableObject
         {
             seen.Add(w.Hwnd);
             var row = Connections.FirstOrDefault(c => c.Hwnd == w.Hwnd);
-            if (row is null) { row = new ConnectionRow { Hwnd = w.Hwnd, WindowPid = w.Pid }; Connections.Add(row); }
+            if (row is null)
+            {
+                int ord = _nextOrdinal++;
+                row = new ConnectionRow { Hwnd = w.Hwnd, WindowPid = w.Pid, Ordinal = ord };
+                Connections.Add(row);
+                // Label the session on-screen so you can tell which one you're in (both may be the same
+                // host). Small top-left chip via the in-process plugin's overlay.
+                if (w.Pid > 0) SendWindowTo(w.Pid, $"overlay #{ord}  {(string.IsNullOrEmpty(w.Host) ? "session" : w.Host)}");
+            }
             row.Host = w.Host;
             row.Window = w.Title;
             row.State = Correlate(w, windows.Count, states, out string agentText);
