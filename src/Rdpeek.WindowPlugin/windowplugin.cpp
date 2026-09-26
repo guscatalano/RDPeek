@@ -40,6 +40,7 @@ static HWND    g_mstsc = nullptr;
 static std::wstring g_origTitle;
 static HWND    g_overlay = nullptr;
 static std::wstring g_overlayText;
+static bool    g_overlayWanted = false;   // did a command ask for the chip? (still only shown when active)
 static HANDLE  g_stop = nullptr;
 static HANDLE  g_uiThread = nullptr;
 static HANDLE  g_pipeThread = nullptr;
@@ -120,7 +121,26 @@ static void PositionOverlay()
     int w = 20 + (int)g_overlayText.size() * 8;
     if (w < 60) w = 60;
     int maxw = r.right - r.left; if (w > maxw) w = maxw;
-    SetWindowPos(g_overlay, HWND_TOPMOST, r.left, r.top, w, 24, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    SetWindowPos(g_overlay, HWND_TOPMOST, r.left, r.top, w, 24, SWP_NOACTIVATE);   // show/hide is separate
+}
+
+// The chip belongs to one session: show it only when that session is the foreground window, so another
+// session's topmost chip never bleeds over the one you're actually looking at.
+static void EvalOverlay()
+{
+    if (!g_overlay) return;
+    bool active = g_overlayWanted && g_mstsc && IsWindow(g_mstsc)
+                  && !IsIconic(g_mstsc) && GetForegroundWindow() == g_mstsc;
+    if (active)
+    {
+        PositionOverlay();
+        if (!IsWindowVisible(g_overlay)) ShowWindow(g_overlay, SW_SHOWNA);
+        InvalidateRect(g_overlay, nullptr, TRUE);
+    }
+    else if (IsWindowVisible(g_overlay))
+    {
+        ShowWindow(g_overlay, SW_HIDE);
+    }
 }
 
 static LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
@@ -139,9 +159,9 @@ static LRESULT CALLBACK OverlayProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         EndPaint(hwnd, &ps);
         return 0;
     }
-    case WM_RDPEEK_OVERLAY:
-        if (wp == 0) ShowWindow(hwnd, SW_HIDE);
-        else { PositionOverlay(); InvalidateRect(hwnd, nullptr, TRUE); }
+    case WM_TIMER:            // periodic re-evaluation: follows focus between sessions
+    case WM_RDPEEK_OVERLAY:   // immediate re-evaluation after a command
+        EvalOverlay();
         return 0;
     }
     return DefWindowProcW(hwnd, msg, wp, lp);
@@ -159,14 +179,14 @@ static DWORD WINAPI UiThread(LPVOID)
     g_overlay = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
                                 kOverlayClass, L"", WS_POPUP, 0, 0, 400, 26,
                                 nullptr, nullptr, g_module, nullptr);
-    if (g_overlay) SetLayeredWindowAttributes(g_overlay, 0, 225, LWA_ALPHA);
+    if (g_overlay) { SetLayeredWindowAttributes(g_overlay, 0, 225, LWA_ALPHA); SetTimer(g_overlay, 1, 150, nullptr); }
 
     MSG m;
     while (GetMessageW(&m, nullptr, 0, 0) > 0) { TranslateMessage(&m); DispatchMessageW(&m); }
     return 0;
 }
 
-static void ShowOverlay(bool show) { if (g_overlay) PostMessageW(g_overlay, WM_RDPEEK_OVERLAY, show ? 1 : 0, 0); }
+static void ShowOverlay(bool show) { g_overlayWanted = show; if (g_overlay) PostMessageW(g_overlay, WM_RDPEEK_OVERLAY, 0, 0); }
 
 // Waits for mstsc's session window to appear (it doesn't exist yet at Initialize time), binds to it,
 // captures its real title, and shows a proof-of-life HUD so the in-process load is visible without
