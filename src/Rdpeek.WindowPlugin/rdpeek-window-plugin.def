@@ -1,0 +1,4 @@
+LIBRARY rdpeek-window-plugin
+EXPORTS
+    DllGetClassObject   PRIVATE
+    DllCanUnloadNow     PRIVATE
