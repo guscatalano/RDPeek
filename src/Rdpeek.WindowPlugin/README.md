@@ -71,11 +71,15 @@ grey out when no connection is selected.
 **Switching between windows.** The Window tab has a *switcher sidebar* — a thin, borderless,
 always-on-top strip docked to the left edge that lists every open RDP connection; click one to bring
 its mstsc window forward **and make it fullscreen** (it sends `fullscreen` to that connection's pipe).
-A small accent **peek handle** sits at the left edge (mid-screen) as a hint — hover it to reveal the
-sidebar. The sidebar **auto-hides when it loses focus** and can also be revealed by shoving the cursor
-into the left edge, or dismissed with its **Hide** button. A global **Ctrl+Alt+← / →** hotkey (toggle
-on the same tab) cycles to the previous / next connection and switches to it. Everything shares the
-dashboard's live connection list.
+The list includes a **Local desktop** entry that minimizes every session so you drop back to your own
+machine (each session restores to fullscreen when you switch back). A small, subtle **peek handle**
+sits at the left edge (mid-screen) as a hint — hover it to reveal the sidebar. The sidebar **auto-hides
+when the pointer leaves it or it loses focus**, can also be revealed by shoving the cursor into the left
+edge, and has a **Hide** button. A global **Ctrl+Alt+← / →** hotkey (toggle on the same tab) cycles to
+the previous / next connection and switches to it. Everything shares the dashboard's live connection list.
+
+> Tip: for the cleanest fullscreen switching, set `displayconnectionbar:i:0` in your `.rdp` to hide
+> mstsc's own connection bar — the switcher gives you a better way to move between and exit sessions.
 
 ## Lifecycle (verified live against the mock)
 

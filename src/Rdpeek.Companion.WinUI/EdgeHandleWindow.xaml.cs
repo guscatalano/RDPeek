@@ -28,7 +28,7 @@ public sealed partial class EdgeHandleWindow : Window
             p.IsMinimizable = false;
         }
 
-        const int w = 14, h = 120;
+        const int w = 10, h = 72;   // subtle sliver
         var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
         AppWindow.MoveAndResize(new RectInt32(work.X, work.Y + (work.Height - h) / 2, w, h));
     }

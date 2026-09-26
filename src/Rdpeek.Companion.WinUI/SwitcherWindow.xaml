@@ -5,8 +5,10 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:Rdpeek.Companion.WinUI">
 
-    <Grid Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" RowSpacing="0">
+    <Grid x:Name="Root" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" RowSpacing="0"
+          PointerExited="OnPointerExited">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -27,8 +29,20 @@
                     Content="Hide ‹" ToolTipService.ToolTip="Hide the sidebar (shove the cursor to the left edge to bring it back)" />
         </Grid>
 
+        <!-- local machine, listed like a session -->
+        <Button Grid.Row="1" Click="OnLocalDesktop" Background="Transparent" BorderThickness="0"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="14,9">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE7F4;" FontSize="14" VerticalAlignment="Center" />
+                <StackPanel Spacing="1">
+                    <TextBlock Text="Local desktop" FontWeight="SemiBold" />
+                    <TextBlock Text="minimize all sessions" FontSize="11" Opacity="0.6" />
+                </StackPanel>
+            </StackPanel>
+        </Button>
+
         <!-- one row per open RDP connection -->
-        <ListView Grid.Row="1" x:Name="List" ItemsSource="{x:Bind Vm.Connections}"
+        <ListView Grid.Row="2" x:Name="List" ItemsSource="{x:Bind Vm.Connections}"
                   IsItemClickEnabled="True" ItemClick="OnItemClick" SelectionMode="Single"
                   Padding="6,4">
             <ListView.ItemTemplate>
@@ -54,7 +68,7 @@
             </ListView.ItemTemplate>
         </ListView>
 
-        <TextBlock Grid.Row="2" Padding="14,8" FontSize="11" Opacity="0.55" TextWrapping="Wrap"
+        <TextBlock Grid.Row="3" Padding="14,8" FontSize="11" Opacity="0.55" TextWrapping="Wrap"
                    Text="Ctrl+Alt+← / → cycle. Hide it, then shove the cursor to the left edge (mid-screen) to reveal. Needs the in-process window plugin registered." />
     </Grid>
 </Window>

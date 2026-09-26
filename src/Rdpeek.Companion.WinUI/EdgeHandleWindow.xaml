@@ -6,11 +6,7 @@
 
     <Grid x:Name="Root" Background="Transparent"
           PointerEntered="OnReveal" PointerPressed="OnReveal">
-        <!-- a small accent nub poking out from the left edge, hinting where to aim the cursor -->
-        <Border Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="0,5,5,0" Opacity="0.9">
-            <TextBlock Text="›" FontSize="13" FontWeight="Bold"
-                       Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" />
-        </Border>
+        <!-- a subtle translucent sliver at the left edge, hinting where to aim the cursor -->
+        <Border Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="0,4,4,0" Opacity="0.45" />
     </Grid>
 </Window>

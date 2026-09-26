@@ -1,6 +1,7 @@
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Windows.Graphics;
 
 namespace Rdpeek.Companion.WinUI;
@@ -57,5 +58,14 @@ public sealed partial class SwitcherWindow : Window
             Vm.ActivateConnectionCommand.Execute(row);
     }
 
+    private void OnLocalDesktop(object sender, RoutedEventArgs e)
+    {
+        Vm.ShowLocalDesktopCommand.Execute(null);
+        HideRequested?.Invoke();
+    }
+
     private void OnHide(object sender, RoutedEventArgs e) => HideRequested?.Invoke();
+
+    /// <summary>Slide away when the pointer leaves the panel — a peek panel disappears when you move off it.</summary>
+    private void OnPointerExited(object sender, PointerRoutedEventArgs e) => HideRequested?.Invoke();
 }

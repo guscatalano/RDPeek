@@ -708,7 +708,12 @@ public partial class MainViewModel : ObservableObject
             WindowStatus = "Select an RDP connection first (Overview tab).";
             return;
         }
-        int pid = conn.WindowPid;
+        SendWindowTo(conn.WindowPid, command);
+    }
+
+    private void SendWindowTo(int pid, string command)
+    {
+        if (pid <= 0) return;
         string pipeName = $"rdpeek-window-{pid}";
         WindowStatus = $"→ {command} …";
         _ = Task.Run(() =>
@@ -741,6 +746,17 @@ public partial class MainViewModel : ObservableObject
         if (row is null) return;
         SelectedConnection = row;
         if (row.WindowPid > 0) SendWindow("fullscreen");   // bring forward + ensure fullscreen
+    }
+
+    /// <summary>Switch to the local machine's desktop by minimising every RDP session (each one restores
+    /// to fullscreen when you switch back). Listed in the switcher alongside the remote sessions.</summary>
+    [RelayCommand]
+    public void ShowLocalDesktop()
+    {
+        int n = 0;
+        foreach (var c in Connections)
+            if (c.WindowPid > 0) { SendWindowTo(c.WindowPid, "show min"); n++; }
+        WindowStatus = n > 0 ? $"Minimised {n} session(s) — showing the local desktop." : "No sessions to minimise.";
     }
 
     /// <summary>Cycle the selection forward/backward through the open connections and activate it.</summary>
