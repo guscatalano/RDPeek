@@ -17,6 +17,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- Field-based [ObservableProperty] is fine with JIT + x:Bind (we don't AOT). -->
     <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
+    <!-- Embeds the icon in the exe (taskbar/window/tray via ExtractIcon). -->
+    <ApplicationIcon>Assets\rdpeek.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

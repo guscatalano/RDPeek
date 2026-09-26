@@ -54,7 +54,7 @@ public sealed class TrayIcon : IDisposable
     [DllImport("user32.dll")] private static extern bool DestroyWindow(IntPtr h);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandleW(string? n);
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)] private static extern bool Shell_NotifyIconW(int msg, ref NOTIFYICONDATAW d);
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr ExtractIconW(IntPtr inst, string exe, int index);
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)] private static extern int ExtractIconExW(string exe, int index, IntPtr[]? large, IntPtr[]? small, int count);
     [DllImport("user32.dll")] private static extern IntPtr LoadIconW(IntPtr inst, IntPtr name);
     [DllImport("user32.dll")] private static extern IntPtr CreatePopupMenu();
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool AppendMenuW(IntPtr menu, uint flags, uint id, string? item);
@@ -87,8 +87,8 @@ public sealed class TrayIcon : IDisposable
         RegisterClassExW(ref wc);
         _hwnd = CreateWindowExW(0, "RdpeekTrayWnd", "", 0, 0, 0, 0, 0, new IntPtr(-3) /*HWND_MESSAGE*/, IntPtr.Zero, hinst, IntPtr.Zero);
 
-        IntPtr icon;
-        try { icon = ExtractIconW(hinst, Environment.ProcessPath ?? "", 0); }
+        IntPtr icon = IntPtr.Zero;
+        try { var sm = new IntPtr[1]; if (ExtractIconExW(Environment.ProcessPath ?? "", 0, null, sm, 1) > 0) icon = sm[0]; }
         catch { icon = IntPtr.Zero; }
         if (icon == IntPtr.Zero) icon = LoadIconW(IntPtr.Zero, new IntPtr(32512) /*IDI_APPLICATION*/);
 
