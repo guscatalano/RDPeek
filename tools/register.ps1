@@ -44,7 +44,9 @@ $clsidKey = "$classesRoot\CLSID\$Clsid\LocalServer32"
 $addinKey = "$addinsRoot\$PluginName"
 
 New-Item -Path $clsidKey -Force | Out-Null
-Set-ItemProperty -Path $clsidKey -Name '(default)' -Value $ExePath
+# Quote the path — COM appends " -Embedding", so an unquoted "C:\Program Files\..." would be split
+# at the space by CreateProcess and the plugin would never launch.
+Set-ItemProperty -Path $clsidKey -Name '(default)' -Value "`"$ExePath`""
 
 New-Item -Path $addinKey -Force | Out-Null
 Set-ItemProperty -Path $addinKey -Name 'Name' -Value $Clsid

@@ -20,9 +20,11 @@
         <!-- Register the client plugins so mstsc loads them — no register.ps1 needed. Machine-wide
              (HKLM, 64-bit) since this is a perMachine install; mstsc reads AddIns from HKLM too. -->
         <Component Id="PluginRegistration" Bitness="always64" Guid="67bc7bad-3d72-4e71-a5d6-b390c10e67c7">
-          <!-- diag plugin: out-of-process COM (LocalServer32) + AddIn -->
+          <!-- diag plugin: out-of-process COM (LocalServer32) + AddIn. The path MUST be quoted — COM
+               appends " -Embedding" and CreateProcess would otherwise split "C:\Program Files\..." at
+               the space and fail to launch the plugin. -->
           <RegistryValue Root="HKLM" Key="Software\Classes\CLSID\{7B6D1E44-9C1A-4C7E-9E2B-11A0C0FFEE01}\LocalServer32"
-                         Value="[INSTALLFOLDER]rdpeek-plugin.exe" Type="string" />
+                         Value="&quot;[INSTALLFOLDER]rdpeek-plugin.exe&quot;" Type="string" />
           <RegistryValue Root="HKLM" Key="Software\Microsoft\Terminal Server Client\Default\AddIns\RDPeek"
                          Name="Name" Value="{7B6D1E44-9C1A-4C7E-9E2B-11A0C0FFEE01}" Type="string" KeyPath="yes" />
           <!-- window plugin: in-process COM (InProcServer32) + AddIn -->
