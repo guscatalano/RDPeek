@@ -62,8 +62,18 @@ public static class Broker
     /// rides the same queue as telemetry so it never blocks a caller.</summary>
     public static void Send(string line)
     {
-        try { EnsureSenderStarted(); Queue.Writer.TryWrite(line); } catch { }
+        try
+        {
+            // Caps are sent once at connect; remember them so they're replayed to a companion that
+            // (re)connects later — otherwise it never learns this agent's capabilities (shell/screenshot).
+            if (line.StartsWith("caps|", StringComparison.Ordinal)) _lastCaps = line;
+            EnsureSenderStarted();
+            Queue.Writer.TryWrite(line);
+        }
+        catch { }
     }
+
+    private static volatile string? _lastCaps;
 
     /// <summary>
     /// Latest connection-status line, replayed whenever the pipe is (re)established so a
@@ -147,9 +157,15 @@ public static class Broker
                     {
                         retryMs = MinRetryMs;
 
-                        // Re-announce state to a companion that missed the original report.
+                        // Re-announce state + capabilities to a companion that missed the originals
+                        // (e.g. it was started/relaunched after this RDP session connected).
                         var status = _lastStatus;
                         if (status is not null && !TryWrite(writer, status))
+                        {
+                            Disconnect(ref pipe, ref writer);
+                        }
+                        var caps = _lastCaps;
+                        if (writer is not null && caps is not null && !TryWrite(writer, caps))
                         {
                             Disconnect(ref pipe, ref writer);
                         }

@@ -100,8 +100,10 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
             {
                 var s = reply.Screenshot;
                 string b64 = s.Jpeg.IsEmpty ? "" : Convert.ToBase64String(s.Jpeg.ToByteArray());
+                Logger.Log($"screenshot: {s.Width}x{s.Height}, {s.Jpeg.Length} bytes{(s.Note.Length > 0 ? " note=" + s.Note : "")}");
                 Broker.Send(Broker.Format("screenshot", Environment.ProcessId, _seq, $"{s.Width}\t{s.Height}\t{b64}"));
             }
+            else Logger.Log($"screenshot: unexpected reply {reply.BodyCase}");
         }
         catch (Exception ex)
         {
