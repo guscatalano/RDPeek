@@ -23,10 +23,14 @@ public sealed class EdgeTrigger : IDisposable
     private readonly Thread _thread;
     private volatile bool _run = true;
     private volatile bool _dockRight;
+    private volatile bool _enabled = true;
     private bool _armed = true;
 
     /// <summary>Which edge to watch — false = left (default), true = right.</summary>
     public bool DockRight { get => _dockRight; set => _dockRight = value; }
+
+    /// <summary>Pause the edge reveal (e.g. when the floating button is used instead).</summary>
+    public bool Enabled { get => _enabled; set => _enabled = value; }
 
     public EdgeTrigger(Action onTrigger)
     {
@@ -53,7 +57,7 @@ public sealed class EdgeTrigger : IDisposable
                     bool inZone = _dockRight ? (p.X >= right - 2 && nearMid) : (p.X <= left + 2 && nearMid);
                     bool pulledAway = _dockRight ? (p.X < right - 40) : (p.X > left + 40);
 
-                    if (inZone && _armed) { _armed = false; _onTrigger(); }
+                    if (inZone && _armed && _enabled) { _armed = false; _onTrigger(); }
                     else if (pulledAway) { _armed = true; }                 // re-arm after pulling away
                 }
             }

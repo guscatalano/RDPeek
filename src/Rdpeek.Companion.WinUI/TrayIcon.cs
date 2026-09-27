@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace Rdpeek.Companion.WinUI;
 
 /// <summary>Current check-state for the tray menu.</summary>
-public readonly record struct TrayState(bool DockRight, bool AutoCycle, bool ConnectionBar);
+public readonly record struct TrayState(bool DockRight, bool AutoCycle, bool ConnectionBar, bool Floating);
 
 /// <summary>
 /// A Win32 system-tray icon for the Companion (WinUI 3 has no built-in NotifyIcon). It hosts a
@@ -15,7 +15,7 @@ public readonly record struct TrayState(bool DockRight, bool AutoCycle, bool Con
 public sealed class TrayIcon : IDisposable
 {
     public const int CmdShowSwitcher = 1, CmdDockLeft = 2, CmdDockRight = 3,
-                     CmdAutoCycle = 4, CmdConnectionBar = 5, CmdDashboard = 6, CmdExit = 7, CmdLaunch = 8;
+                     CmdAutoCycle = 4, CmdConnectionBar = 5, CmdDashboard = 6, CmdExit = 7, CmdLaunch = 8, CmdFloating = 9;
 
     private const int WM_TRAY = 0x8000 + 1;   // WM_APP + 1
     private const int WM_RBUTTONUP = 0x0205, WM_LBUTTONDBLCLK = 0x0203, WM_CONTEXTMENU = 0x007B, WM_NULL = 0;
@@ -126,6 +126,7 @@ public sealed class TrayIcon : IDisposable
         AppendMenuW(menu, MF_SEPARATOR, 0, null);
         AppendMenuW(menu, MF_STRING | (s.DockRight ? 0 : MF_CHECKED), CmdDockLeft, "Dock left");
         AppendMenuW(menu, MF_STRING | (s.DockRight ? MF_CHECKED : 0), CmdDockRight, "Dock right");
+        AppendMenuW(menu, MF_STRING | (s.Floating ? MF_CHECKED : 0), CmdFloating, "Floating button");
         AppendMenuW(menu, MF_SEPARATOR, 0, null);
         AppendMenuW(menu, MF_STRING | (s.AutoCycle ? MF_CHECKED : 0), CmdAutoCycle, "Auto-cycle (5s)");
         AppendMenuW(menu, MF_STRING | (s.ConnectionBar ? MF_CHECKED : 0), CmdConnectionBar, "Show connection bar");

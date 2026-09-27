@@ -23,15 +23,23 @@ public sealed partial class MainWindow : Window
         // A visible nub at the edge shows where to aim; hovering it reveals the sidebar.
         _handle = new EdgeHandleWindow();
         _handle.RevealRequested += () => DispatcherQueue.TryEnqueue(() => ShowSwitcher());
-        _handle.AppWindow.Show(false);
-        Closed += (_, _) => { try { _handle?.Close(); } catch { } };
 
-        // Let the user dock the whole thing to the right edge instead of the left.
-        Vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(MainViewModel.DockRight)) ApplyDock(); };
+        // Alternative: a draggable floating circle; click it to reveal the sidebar.
+        _floating = new FloatingButtonWindow();
+        _floating.RevealRequested += () => DispatcherQueue.TryEnqueue(() => ShowSwitcher());
+
+        ShowActiveHandle();
+        Closed += (_, _) => { try { _handle?.Close(); _floating?.Close(); } catch { } };
+
+        Vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.DockRight)) ApplyDock();
+            else if (e.PropertyName == nameof(MainViewModel.UseFloatingButton)) { if (!_switcherVisible) ShowActiveHandle(); }
+        };
 
         // System-tray icon: the primary way to drive the switcher without the dashboard open.
         _tray = new TrayIcon(
-            () => new TrayState(Vm.DockRight, Vm.AutoCycle, Vm.ShowConnectionBar),
+            () => new TrayState(Vm.DockRight, Vm.AutoCycle, Vm.ShowConnectionBar, Vm.UseFloatingButton),
             id => DispatcherQueue.TryEnqueue(() => OnTrayCommand(id)));
 
         // Closing the dashboard hides it to the tray rather than quitting; Exit (tray) really quits.
@@ -90,9 +98,34 @@ public sealed partial class MainWindow : Window
     private SwitcherWindow? _switcher;
     private readonly EdgeTrigger _edge;
     private readonly EdgeHandleWindow _handle;
+    private readonly FloatingButtonWindow _floating;
     private readonly TrayIcon _tray;
     private bool _switcherVisible;
     private bool _exiting;
+
+    /// <summary>Show the reveal affordance the user picked (edge nub or floating circle); the edge-slam
+    /// reveal only applies to the nub.</summary>
+    private void ShowActiveHandle()
+    {
+        if (Vm.UseFloatingButton)
+        {
+            _handle.AppWindow.Hide();
+            _floating.AppWindow.Show(false);
+            _edge.Enabled = false;
+        }
+        else
+        {
+            _floating.AppWindow.Hide();
+            _handle.AppWindow.Show(false);
+            _edge.Enabled = true;
+        }
+    }
+
+    private void HideActiveHandle()
+    {
+        _handle.AppWindow.Hide();
+        _floating.AppWindow.Hide();
+    }
 
     private void OnTrayCommand(int id)
     {
@@ -104,6 +137,7 @@ public sealed partial class MainWindow : Window
             case TrayIcon.CmdDockRight: Vm.DockRight = true; break;
             case TrayIcon.CmdAutoCycle: Vm.AutoCycle = !Vm.AutoCycle; break;
             case TrayIcon.CmdConnectionBar: Vm.ShowConnectionBar = !Vm.ShowConnectionBar; break;
+            case TrayIcon.CmdFloating: Vm.UseFloatingButton = !Vm.UseFloatingButton; break;
             case TrayIcon.CmdDashboard: AppWindow.Show(); Activate(); break;
             case TrayIcon.CmdExit:
                 _exiting = true;
@@ -137,7 +171,7 @@ public sealed partial class MainWindow : Window
     {
         if (_switcherVisible) return;
         EnsureSwitcher();
-        _handle.AppWindow.Hide();          // hide the hint nub while the full sidebar is up
+        HideActiveHandle();                // hide the nub/circle while the full sidebar is up
         _switcher!.AppWindow.Show(activate);
         if (activate) _switcher.Activate();
         _switcherVisible = true;
@@ -147,7 +181,7 @@ public sealed partial class MainWindow : Window
     {
         _switcherVisible = false;
         _switcher?.AppWindow.Hide();
-        _handle.AppWindow.Show(false);     // bring the hint nub back
+        ShowActiveHandle();                // bring the nub/circle back
     }
 
     private void OnToggleSwitcher(object sender, RoutedEventArgs e)

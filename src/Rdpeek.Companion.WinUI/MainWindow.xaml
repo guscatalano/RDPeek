@@ -922,6 +922,8 @@
                                                   OnContent="mstsc connection bar" OffContent="mstsc connection bar" />
                                     <ToggleSwitch IsOn="{x:Bind Vm.DockRight, Mode=TwoWay}"
                                                   OnContent="Dock right" OffContent="Dock left" />
+                                    <ToggleSwitch IsOn="{x:Bind Vm.UseFloatingButton, Mode=TwoWay}"
+                                                  OnContent="Floating circle" OffContent="Edge nub" />
                                 </StackPanel>
 
                                 <!-- ContentControl (a Control, so it has IsEnabled) greys out the whole

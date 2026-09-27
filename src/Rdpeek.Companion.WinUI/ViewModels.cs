@@ -258,6 +258,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _autoCycle;               // rotate through sessions on a timer
     [ObservableProperty] private bool _showConnectionBar;       // toggle mstsc's own connection bar
     [ObservableProperty] private bool _dockRight;               // dock the switcher/handle on the right edge
+    [ObservableProperty] private bool _useFloatingButton;       // floating draggable circle instead of the edge nub
 
     // Windows Event Log viewer.
     public ObservableCollection<EventRow> EventLogEntries { get; } = new();
