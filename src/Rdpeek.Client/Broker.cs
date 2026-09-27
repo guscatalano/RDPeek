@@ -35,6 +35,9 @@ public static class Broker
     private const int ConnectTimeoutMs = 50;     // only reached when the pipe already exists
     private const int MinRetryMs = 250;
     private const int MaxRetryMs = 5_000;
+    private const int HeartbeatMs = 2_000;       // re-announce status while idle, so a broken pipe
+                                                 // (e.g. the companion was relaunched) is detected and
+                                                 // reconnected without needing the RDP session reconnected
     private const int QueueCapacity = 256;
 
     // DropOldest: if the companion is away, stale telemetry is worth less than staying
@@ -122,19 +125,19 @@ public static class Broker
         {
             try
             {
-                // Connected: sleep until there is something to send. Disconnected: also wake
-                // on the retry timer, so a companion that starts later gets picked up even
-                // when this plugin has nothing new to say.
-                using (var wake = writer is null ? new CancellationTokenSource(retryMs) : null)
+                // Wake on new telemetry, or on a timer: the retry interval while disconnected (so a
+                // companion that starts later gets picked up), or the heartbeat interval while
+                // connected (so a pipe broken by a relaunched companion is noticed even when idle).
+                bool idleWake = false;
+                using (var wake = new CancellationTokenSource(writer is null ? retryMs : HeartbeatMs))
                 {
                     try
                     {
-                        await Queue.Reader.WaitToReadAsync(wake?.Token ?? CancellationToken.None)
-                                          .ConfigureAwait(false);
+                        await Queue.Reader.WaitToReadAsync(wake.Token).ConfigureAwait(false);
                     }
                     catch (OperationCanceledException)
                     {
-                        // retry tick, not an error
+                        idleWake = true;   // timer, nothing queued
                     }
                 }
 
@@ -167,6 +170,13 @@ public static class Broker
                     {
                         Disconnect(ref pipe, ref writer);
                     }
+                }
+
+                // Idle heartbeat: re-announce status. A failed write reveals a companion that went
+                // away (or was relaunched), so we drop the dead pipe and reconnect next iteration.
+                if (idleWake && writer is not null && _lastStatus is { } status2 && !TryWrite(writer, status2))
+                {
+                    Disconnect(ref pipe, ref writer);
                 }
             }
             catch
