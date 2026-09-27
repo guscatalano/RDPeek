@@ -59,7 +59,13 @@ jobs:
           dotnet tool install --global wix --version 5.0.2
           "$env:USERPROFILE\.dotnet\tools" >> $env:GITHUB_PATH
       - name: Build MSI
-        run: wix build packaging/companion/Package.wxs -b pub=publish/companion -d Version=${{ steps.ver.outputs.ver }} -o publish/rdpeek-companion.msi
+        shell: pwsh
+        run: |
+          $pub = (Resolve-Path publish/companion).Path   # absolute path so the Files glob resolves
+          wix build packaging/companion/Package.wxs -b pub="$pub" -d Version=${{ steps.ver.outputs.ver }} -o publish/rdpeek-companion.msi
+          $size = (Get-Item publish/rdpeek-companion.msi).Length
+          "MSI size: $size"
+          if ($size -lt 5MB) { throw "MSI is $size bytes — payload missing (bindpath glob matched nothing)" }
 
       # ── Companion: MSIX (MakeAppx + self-signed cert) ───────────────────
       - name: Build + sign MSIX
