@@ -39,6 +39,43 @@ public static class RdpWindows
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
 
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hwnd, int cmd);
+    [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
+    [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+
+    /// <summary>Pull a window to the foreground from another process. Windows blocks a plain
+    /// SetForegroundWindow across the foreground-lock, so we briefly attach our input queue to the
+    /// current foreground thread (and the target's) — the standard trick. Lets the switcher focus a
+    /// session even when the in-process window plugin isn't loaded (which is what gives fullscreen).</summary>
+    public static void ForceForeground(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return;
+        const int SW_RESTORE = 9;
+        IntPtr fg = GetForegroundWindow();
+        uint fgThread = GetWindowThreadProcessId(fg, out _);
+        uint targetThread = GetWindowThreadProcessId(hwnd, out _);
+        uint thisThread = GetCurrentThreadId();
+
+        if (fgThread != 0 && fgThread != thisThread) AttachThreadInput(thisThread, fgThread, true);
+        if (targetThread != 0 && targetThread != thisThread && targetThread != fgThread)
+            AttachThreadInput(thisThread, targetThread, true);
+        try
+        {
+            ShowWindow(hwnd, SW_RESTORE);   // un-minimize if needed
+            BringWindowToTop(hwnd);
+            SetForegroundWindow(hwnd);
+        }
+        finally
+        {
+            if (fgThread != 0 && fgThread != thisThread) AttachThreadInput(thisThread, fgThread, false);
+            if (targetThread != 0 && targetThread != thisThread && targetThread != fgThread)
+                AttachThreadInput(thisThread, targetThread, false);
+        }
+    }
+
     // RDP client processes we recognize. Classic mstsc hosts each connection in a stable
     // "TscShellContainerClass" top-level window. The modern client (msrdc — the "Remote Desktop" /
     // Windows Desktop / AVD client) is WinUI-based and has no stable, semantic session-window class,

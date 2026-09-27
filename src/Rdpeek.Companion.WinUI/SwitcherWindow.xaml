@@ -79,6 +79,11 @@
                                 <TextBlock Text="{x:Bind HealthText, Mode=OneWay}" FontSize="11"
                                            Foreground="{x:Bind HealthBrush, Mode=OneWay}"
                                            TextTrimming="CharacterEllipsis" />
+                                <!-- shown only when the in-process control plugin isn't loaded for this
+                                     session (started before it was registered) -->
+                                <TextBlock Text="{x:Bind ControlHint, Mode=OneWay}" FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                           Visibility="{x:Bind local:Ui.VisibleIfText(ControlHint), Mode=OneWay}" />
                             </StackPanel>
                         </Grid>
                     </StackPanel>

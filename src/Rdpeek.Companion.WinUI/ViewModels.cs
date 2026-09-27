@@ -33,6 +33,9 @@ public partial class ConnectionRow : ObservableObject
     [ObservableProperty] private Brush _healthBrush = UiBrushes.Muted;
     [ObservableProperty] private Microsoft.UI.Xaml.Media.ImageSource? _thumbnail;   // last-seen preview
     [ObservableProperty] private string _thumbnailSource = "";                      // where/when it came from
+    // Non-empty when the in-process window plugin isn't answering this session's pipe — shown as a
+    // caution in the switcher (the session was started before the plugin was registered).
+    [ObservableProperty] private string _controlHint = "";
     public BrokerServer.AgentState? State { get; set; }
 }
 
@@ -78,6 +81,9 @@ public static class Ui
 
     public static Microsoft.UI.Xaml.Visibility VisibleIfSet(object? value) =>
         value is null ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
+
+    public static Microsoft.UI.Xaml.Visibility VisibleIfText(string? value) =>
+        string.IsNullOrEmpty(value) ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
 
     public static string PluginDetail(string activation, string module, string bitness)
     {
@@ -778,9 +784,39 @@ public partial class MainViewModel : ObservableObject
         if (row is null) return;
         SelectedConnection = row;
         if (row.WindowPid <= 0) return;
-        void doSwitch() => SendWindow("fullscreen");   // bring forward + ensure fullscreen
+        void doSwitch()
+        {
+            // Focus works with or without the in-process plugin: pull the window forward from here
+            // (Companion-side, cross-process). If the plugin IS loaded, "fullscreen" then also ensures
+            // fullscreen; if it's absent it's a no-op and the switcher already shows the reconnect note.
+            RdpWindows.ForceForeground(row.Hwnd);
+            SendWindow("fullscreen");
+        }
         if (SwitchTransition is { } t) t(doSwitch); else doSwitch();
         CaptureThumbnail(row);
+    }
+
+    /// <summary>Probe a session's in-process window-plugin pipe; set a caution note on the row when it
+    /// isn't answering (the session started before the plugin was registered). Off the UI thread.</summary>
+    private void ProbeControlPlugin(ConnectionRow row)
+    {
+        int pid = row.WindowPid;
+        if (pid <= 0) return;
+        _ = Task.Run(() =>
+        {
+            bool ok = false;
+            try
+            {
+                using var pipe = new System.IO.Pipes.NamedPipeClientStream(
+                    ".", $"rdpeek-window-{pid}", System.IO.Pipes.PipeDirection.Out);
+                pipe.Connect(150);
+                ok = true;
+            }
+            catch { ok = false; }
+            _dispatcher.TryEnqueue(() => row.ControlHint = ok ? "" :
+                "No window plugin in this session — focus works, but fullscreen/overlay need it. " +
+                "Fully quit the client (msrdc keeps a background process) and reconnect.");
+        });
     }
 
     /// <summary>Grab a fresh preview of a session once it's the visible foreground window (after the
@@ -1166,6 +1202,7 @@ public partial class MainViewModel : ObservableObject
         {
             seen.Add(w.Hwnd);
             var row = Connections.FirstOrDefault(c => c.Hwnd == w.Hwnd);
+            bool isNew = row is null;
             if (row is null)
             {
                 int ord = _nextOrdinal++;
@@ -1180,6 +1217,10 @@ public partial class MainViewModel : ObservableObject
             row.State = Correlate(w, windows.Count, states, out string agentText);
             row.Agent = agentText;
             UpdateRowMetrics(row);
+            // Note in the switcher when the in-process control plugin isn't loaded for this session
+            // (started before it was registered). Probe once for a new row, and keep re-probing a row
+            // that's currently flagged so a reconnect clears it; stop once it's answering.
+            if (row.WindowPid > 0 && (isNew || row.ControlHint.Length > 0)) ProbeControlPlugin(row);
         }
         for (int i = Connections.Count - 1; i >= 0; i--)
             if (!seen.Contains(Connections[i].Hwnd)) Connections.RemoveAt(i);
