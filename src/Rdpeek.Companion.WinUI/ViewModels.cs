@@ -85,6 +85,9 @@ public static class Ui
     public static Microsoft.UI.Xaml.Visibility VisibleIfText(string? value) =>
         string.IsNullOrEmpty(value) ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
 
+    public static Microsoft.UI.Xaml.Visibility VisibleIfAny(System.Collections.ICollection? c) =>
+        c is { Count: > 0 } ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
     public static string PluginDetail(string activation, string module, string bitness)
     {
         var parts = new List<string>();
@@ -125,6 +128,13 @@ public sealed record HotfixRow(string Id, string Description, string Installed);
 
 /// <summary>A display adapter and its driver.</summary>
 public sealed record GpuRow(string Name, string Driver, string Date, string Vram, string Status);
+
+/// <summary>A graphics-driver advisory (known-bad match or old-driver note), from the GitHub list.</summary>
+public sealed record DriverAdvisoryRow(string Severity, string Adapter, string Side, string Message, string Link)
+{
+    public Brush Brush => Severity switch { "fail" => UiBrushes.Fail, "info" => UiBrushes.Info, _ => UiBrushes.Warn };
+    public string Glyph => Severity == "info" ? "" : "";   // Info : Warning (Segoe MDL2)
+}
 
 /// <summary>A PnP device; HasProblem drives the red highlight.</summary>
 public sealed record DeviceRow(string Name, string Class, string Status, string Problem, bool HasProblem)
@@ -184,6 +194,12 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<LinkRow> LinkQuality { get; } = new();
     public ObservableCollection<HotfixRow> Hotfixes { get; } = new();
     public ObservableCollection<GpuRow> Gpus { get; } = new();
+    // Graphics-driver advisories (client + server) from the GitHub known-bad list.
+    public ObservableCollection<DriverAdvisoryRow> DriverWarnings { get; } = new();
+    [ObservableProperty] private string _driverSummary = "Checking display drivers…";
+    private DriverAdvisories.BadDriverList? _badDrivers;
+    private List<DriverAdvisoryRow> _clientDriverAdvisories = new();
+    private List<DriverAdvisoryRow> _serverDriverAdvisories = new();
     public ObservableCollection<DeviceRow> Devices { get; } = new();
     [ObservableProperty] private string _systemBuild = "Connect an agent to read deep system detail.";
 
@@ -316,6 +332,7 @@ public partial class MainViewModel : ObservableObject
 
         Refresh();
         _ = RunDiagnostics();   // plugin-registration health, in the background
+        _ = LoadDriverAdvisoriesAsync();   // graphics-driver advisories, in the background
 
         // Global switch-window hotkeys (Ctrl+Alt+Right / Left). Fired on the listener thread → marshal.
         _hotkeys = new HotkeyListener();
@@ -1397,6 +1414,58 @@ public partial class MainViewModel : ObservableObject
             Gpus.Add(new GpuRow(g.Name, g.DriverVersion, g.DriverDate, g.VramBytes > 0 ? Bytes(g.VramBytes) : "", g.Status));
         foreach (var p in d.Devices)
             Devices.Add(new DeviceRow(p.Name, p.DeviceClass, p.Status, p.Problem, p.Problem.Length > 0));
+
+        EvaluateServerDrivers(d);   // check the session host's GPUs against the known-bad list
+    }
+
+    /// <summary>Load the known-bad driver list (GitHub → cache → embedded) and evaluate THIS machine's
+    /// display drivers (client side). Server-side is re-evaluated whenever the agent's SystemDetail
+    /// arrives. Runs in the background; never throws.</summary>
+    private async Task LoadDriverAdvisoriesAsync()
+    {
+        try
+        {
+            var list = await DriverAdvisories.LoadAsync();
+            var local = await Task.Run(() => GpuProbe.Local());
+            var adv = DriverAdvisories.Evaluate(list, local).Select(ToRow).ToList();
+            _dispatcher.TryEnqueue(() =>
+            {
+                _badDrivers = list;
+                _clientDriverAdvisories = adv;
+                RebuildDriverWarnings();
+            });
+        }
+        catch { _dispatcher.TryEnqueue(() => DriverSummary = "Graphics drivers — advisory check unavailable"); }
+    }
+
+    private void EvaluateServerDrivers(SystemDetail d)
+    {
+        if (_badDrivers is null) return;   // list not loaded yet — the next SystemDetail will re-run
+        var gpus = d.Gpus.Select(g => new GpuDriver(g.Name, g.DriverVersion, g.DriverDate, "server"));
+        _serverDriverAdvisories = DriverAdvisories.Evaluate(_badDrivers, gpus).Select(ToRow).ToList();
+        RebuildDriverWarnings();
+    }
+
+    private static DriverAdvisoryRow ToRow(DriverAdvisory a) =>
+        new(a.Severity, a.Adapter, a.Side, a.Message, a.Link);
+
+    private void RebuildDriverWarnings()
+    {
+        DriverWarnings.Clear();
+        // Real warnings lead; the quiet old-driver "info" notes trail — so a genuine problem is what
+        // catches the eye, and the age hints stay unobtrusive.
+        foreach (var a in _clientDriverAdvisories.Concat(_serverDriverAdvisories)
+                          .OrderBy(a => a.Severity switch { "fail" => 0, "warn" => 1, _ => 2 }))
+            DriverWarnings.Add(a);
+
+        int bad = DriverWarnings.Count(a => a.Severity is "fail" or "warn");
+        int info = DriverWarnings.Count(a => a.Severity == "info");
+        DriverSummary = DriverWarnings.Count == 0
+            ? "Graphics drivers — no known issues"
+            : bad > 0
+                ? $"⚠ Graphics drivers — {bad} warning{(bad == 1 ? "" : "s")}" +
+                  (info > 0 ? $", {info} note{(info == 1 ? "" : "s")}" : "")
+                : $"Graphics drivers — {info} note{(info == 1 ? "" : "s")}";
     }
 
     /// <summary>

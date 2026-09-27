@@ -11,6 +11,8 @@ using Rdpeek.Doctor;
 //   rdpeek-doctor dvcprobe [--discover]    Opt-in client-side DVC traffic probe over
 //                                          mstsc's ETW providers. Needs Administrator.
 //     --seconds N                          Stop after N seconds (default: Ctrl+C).
+//   rdpeek-doctor drivers                  Check client display drivers against RDPeek's
+//                                          known-bad list (fetched from GitHub).
 
 int seconds = 0;
 int secondsAt = Array.FindIndex(args, a => a.Equals("--seconds", StringComparison.OrdinalIgnoreCase));
@@ -26,6 +28,9 @@ switch (args.Length > 0 ? args[0].ToLowerInvariant() : "")
 
     case "broker":
         return ClientDiagnostics.ListenToBroker(seconds);
+
+    case "drivers":
+        return DriverCheck.Run();
 }
 
 using var comScope = DoctorEngine.ComScope();

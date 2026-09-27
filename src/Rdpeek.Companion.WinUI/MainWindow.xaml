@@ -794,6 +794,29 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
 
+                                <!-- driver advisories (client + server), from the GitHub known-bad list -->
+                                <TextBlock Text="{x:Bind Vm.DriverSummary, Mode=OneWay}" FontWeight="SemiBold" />
+                                <ItemsControl ItemsSource="{x:Bind Vm.DriverWarnings}"
+                                              Visibility="{x:Bind local:Ui.VisibleIfAny(Vm.DriverWarnings), Mode=OneWay}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:DriverAdvisoryRow">
+                                            <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                                    CornerRadius="4" Padding="8,6" Margin="0,3">
+                                                <StackPanel Spacing="2">
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <TextBlock Text="{x:Bind Glyph}" Foreground="{x:Bind Brush}" />
+                                                        <TextBlock Text="{x:Bind Adapter}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{x:Bind Side}" Opacity="0.6" FontFamily="Consolas" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="{x:Bind Message}" TextWrapping="Wrap" Opacity="0.9" />
+                                                    <HyperlinkButton Content="{x:Bind Link}" NavigateUri="{x:Bind Link}"
+                                                                     Padding="0" Visibility="{x:Bind local:Ui.VisibleIfText(Link)}" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
                                 <!-- display adapters -->
                                 <TextBlock Text="Display adapters" FontWeight="SemiBold" />
                                 <ItemsControl ItemsSource="{x:Bind Vm.Gpus}">

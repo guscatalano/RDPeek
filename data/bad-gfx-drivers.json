@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "updated": "2026-09-27",
+  "_comment": "RDPeek's known-bad graphics-driver advisory list. Community-maintained — open a PR to add or correct entries. RDPeek fetches the raw copy of this file from GitHub at runtime (falling back to the copy embedded in the build) and warns when a client- or server-side display adapter matches. Matching: an entry applies to a GPU when the GPU's Name contains 'vendor' (and 'match' if set), case-insensitive, and 'side' is client/server/both. A driver version is flagged if it is listed in 'badVersions' or falls inside 'range' [min,max] inclusive. Versions compare as dotted-numeric (e.g. 31.0.15.3623). Separately, any driver older than 'oldDriverMonths' gets a quiet, low-severity 'old driver' note.",
+  "oldDriverMonths": 48,
+  "entries": [
+    {
+      "vendor": "NVIDIA",
+      "match": "",
+      "side": "both",
+      "severity": "warn",
+      "badVersions": [],
+      "range": { "min": "31.0.15.3598", "max": "31.0.15.3623" },
+      "reason": "This NVIDIA driver family has reports of black screens / freezes decoding RDP H.264 (AVC 4:4:4).",
+      "fixedIn": "31.0.15.3640",
+      "link": "https://www.nvidia.com/en-us/geforce/drivers/"
+    },
+    {
+      "vendor": "AMD",
+      "match": "Radeon",
+      "side": "client",
+      "severity": "warn",
+      "badVersions": [],
+      "range": { "min": "31.0.21912.14", "max": "31.0.21918.9999" },
+      "reason": "Reported RDP client rendering corruption / gray screen with hardware H.264 decode in this Adrenalin range.",
+      "fixedIn": "31.0.24002.92",
+      "link": "https://www.amd.com/en/support"
+    },
+    {
+      "vendor": "Microsoft",
+      "match": "Basic Display Adapter",
+      "side": "server",
+      "severity": "info",
+      "badVersions": ["*"],
+      "range": null,
+      "reason": "The session host is on the Microsoft Basic Display Adapter (no vendor GPU driver) — GPU-accelerated RemoteFX/AVC encode is unavailable; expect software-only encoding.",
+      "fixedIn": "",
+      "link": "https://learn.microsoft.com/windows-server/remote/remote-desktop-services/rds-graphics-virtualization"
+    }
+  ]
+}

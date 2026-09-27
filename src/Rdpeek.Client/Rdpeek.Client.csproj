@@ -9,6 +9,15 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Rdpeek.Protocol\Rdpeek.Protocol.csproj" />
+    <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- The known-bad graphics-driver list is fetched from GitHub at runtime; embed the checked-in
+       copy so DriverAdvisories always has an offline fallback. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\data\bad-gfx-drivers.json">
+      <LogicalName>bad-gfx-drivers.json</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
 </Project>
