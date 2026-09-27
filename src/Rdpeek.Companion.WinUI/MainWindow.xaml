@@ -107,6 +107,8 @@
                                     <TextBlock Text="Copies each:" VerticalAlignment="Center" />
                                     <TextBox Width="52" Text="{x:Bind Vm.LaunchCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <ToggleSwitch IsOn="{x:Bind Vm.LaunchFullscreen, Mode=TwoWay}" OnContent="Fullscreen" OffContent="Windowed" />
+                                    <ToggleSwitch IsOn="{x:Bind Vm.LaunchNoNla, Mode=TwoWay}" OnContent="TLS only (no NLA)" OffContent="NLA (default)"
+                                                  ToolTipService.ToolTip="Turn NLA/CredSSP off (plain TLS). Needed for the loopback mock; a bare host with NLA can't connect without credentials." />
                                     <Button Content="Launch" Command="{x:Bind Vm.LaunchCommand}" Style="{ThemeResource AccentButtonStyle}" />
                                 </StackPanel>
                                 <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.7" Text="{x:Bind Vm.LaunchStatus, Mode=OneWay}" />

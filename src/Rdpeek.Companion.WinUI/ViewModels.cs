@@ -797,11 +797,7 @@ public partial class MainViewModel : ObservableObject
     public void LaunchRecent(RecentConnection? r)
     {
         if (r is null) return;
-        try
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("mstsc", LaunchArgs(r.Target)) { UseShellExecute = true });
-            LaunchStatus = $"Launched {r.Display}.";
-        }
+        try { StartMstsc(r.Target); LaunchStatus = $"Launched {r.Display}."; }
         catch (Exception ex) { LaunchStatus = $"Failed to launch {r.Display}: {ex.Message}"; }
     }
 
@@ -809,6 +805,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _launchTargets = "";
     [ObservableProperty] private string _launchCount = "1";
     [ObservableProperty] private bool _launchFullscreen = true;
+    [ObservableProperty] private bool _launchNoNla;   // TLS-only (CredSSP off) — needed for the loopback mock
     [ObservableProperty] private string _launchStatus = "Enter targets (one per line), then Launch.";
 
     /// <summary>Start one mstsc per target (times the copy count) — a one-click way to open several
@@ -825,21 +822,38 @@ public partial class MainViewModel : ObservableObject
         foreach (var target in targets)
             for (int i = 0; i < count; i++)
             {
-                try
-                {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("mstsc", LaunchArgs(target)) { UseShellExecute = true });
-                    launched++;
-                }
+                try { StartMstsc(target); launched++; }
                 catch (Exception ex) { LaunchStatus = $"Failed to launch {target}: {ex.Message}"; return; }
             }
         LaunchStatus = $"Launched {launched} connection(s) — accept each mstsc prompt to connect.";
     }
 
-    private string LaunchArgs(string target)
+    /// <summary>Start one mstsc for a target. A .rdp path is launched as-is. A bare host normally goes
+    /// via /v: (mstsc defaults = NLA/CredSSP). With "TLS only" on, we instead write a small .rdp that
+    /// turns CredSSP off — a bare /v: fails against the loopback mock because it can't complete NLA
+    /// without credentials, which is why launching the mock only worked from the mock's own tuned .rdp.</summary>
+    private void StartMstsc(string target)
     {
         bool isRdp = target.EndsWith(".rdp", StringComparison.OrdinalIgnoreCase) && System.IO.File.Exists(target);
         string fs = LaunchFullscreen ? " /f" : "";
-        return isRdp ? $"\"{target}\"{fs}" : $"/v:{target}{fs}";
+        string args = isRdp ? $"\"{target}\"{fs}"
+                    : LaunchNoNla ? $"\"{WriteHostRdp(target)}\""      // screen mode is in the file
+                    : $"/v:{target}{fs}";
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("mstsc", args) { UseShellExecute = true });
+    }
+
+    private string WriteHostRdp(string host)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"full address:s:{host}");
+        sb.AppendLine("authentication level:i:2");
+        sb.AppendLine("enablecredsspsupport:i:0");   // TLS only — no NLA/CredSSP
+        sb.AppendLine("prompt for credentials:i:0");
+        sb.AppendLine($"screen mode id:i:{(LaunchFullscreen ? 2 : 1)}");
+        string safe = new string(host.Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray());
+        string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"rdpeek-{safe}.rdp");
+        System.IO.File.WriteAllText(path, sb.ToString(), System.Text.Encoding.ASCII);
+        return path;
     }
 
     /// <summary>Switch to the local machine's desktop by minimising every RDP session (each one restores
