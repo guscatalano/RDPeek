@@ -103,6 +103,12 @@ internal sealed class AgentCore
                         });
                     break;
 
+                case Envelope.BodyOneofCase.ScreenshotRequest:
+                    _ = Task.Run(() => _router.RespondAsync(
+                        new Envelope { Screenshot = _data.Screenshot((int)env.ScreenshotRequest.MaxWidth, (int)env.ScreenshotRequest.Quality) },
+                        env.RequestId));
+                    break;
+
                 // Periodic pushes aren't wired yet: any interval is answered one-shot,
                 // which is what the polling viewer asks for.
                 case Envelope.BodyOneofCase.CounterSubscribe:
@@ -148,6 +154,7 @@ internal sealed class AgentCore
             Counters = DvcCounters.Available,    // perfmon counter set, else the ETW fallback
             SystemDetail = true,                 // build / updates / drivers / PnP (read-only)
             Shell = _allowShell,                 // off unless the agent opted in with --allow-shell
+            Screenshot = true,                   // session-desktop capture for live thumbnails
             MaxChunkBytes = 256 * 1024,
         };
         caps.FileRoots.AddRange(_fileRoots);

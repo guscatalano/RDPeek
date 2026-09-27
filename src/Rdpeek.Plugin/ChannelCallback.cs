@@ -81,6 +81,32 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
             string command = tab >= 0 ? cmd.payload[(tab + 1)..] : cmd.payload;
             _ = RunShellAsync(sh, command);
         }
+        else if (cmd.kind == "screenshot")
+        {
+            int w = int.TryParse(cmd.payload, out var mw) ? Math.Clamp(mw, 64, 1920) : 480;
+            _ = RunScreenshotAsync(w);
+        }
+    }
+
+    /// <summary>Ask the agent for a JPEG of its session desktop and relay it (base64, since the broker
+    /// line protocol is newline-framed). Payload back: width \t height \t base64-jpeg (empty jpeg on failure).</summary>
+    private async Task RunScreenshotAsync(int maxWidth)
+    {
+        try
+        {
+            var reply = await _router.RequestAsync(
+                new Envelope { ScreenshotRequest = new ScreenshotRequest { MaxWidth = (uint)maxWidth, Quality = 60 } }, _cts.Token);
+            if (reply.BodyCase == Envelope.BodyOneofCase.Screenshot)
+            {
+                var s = reply.Screenshot;
+                string b64 = s.Jpeg.IsEmpty ? "" : Convert.ToBase64String(s.Jpeg.ToByteArray());
+                Broker.Send(Broker.Format("screenshot", Environment.ProcessId, _seq, $"{s.Width}\t{s.Height}\t{b64}"));
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"screenshot failed: {ex.Message}");
+        }
     }
 
     /// <summary>Run a command on the agent (only honoured if the agent was started with --allow-shell)
@@ -377,7 +403,10 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
                 Logger.Log($"agent capabilities: build={caps.Capabilities.AgentBuild} " +
                            $"sysinfo={caps.Capabilities.Sysinfo} processes={caps.Capabilities.ProcessList} shell={caps.Capabilities.Shell}");
                 // Let the companion gate features it can't use (e.g. grey out the shell).
-                Broker.Send(Broker.Format("caps", Environment.ProcessId, _seq, caps.Capabilities.Shell ? "shell" : ""));
+                var flags = new List<string>();
+                if (caps.Capabilities.Shell) flags.Add("shell");
+                if (caps.Capabilities.Screenshot) flags.Add("screenshot");
+                Broker.Send(Broker.Format("caps", Environment.ProcessId, _seq, string.Join(' ', flags)));
             }
             else
                 Logger.Log($"unexpected reply to Hello: {caps?.BodyCase.ToString() ?? "none"}");

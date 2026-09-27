@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Security.Principal;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -270,6 +271,9 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _showConnectionBar;       // toggle mstsc's own connection bar
     [ObservableProperty] private bool _dockRight;               // dock the switcher/handle on the right edge
     [ObservableProperty] private bool _useFloatingButton;       // floating draggable circle instead of the edge nub
+    [ObservableProperty] private bool _agentThumbnails;         // live per-session previews via the agent (optional)
+    [ObservableProperty] private string _thumbnailRate = "3";   // seconds between agent screenshot polls
+    private DispatcherQueueTimer? _thumbTimer;
 
     // Windows Event Log viewer.
     public ObservableCollection<EventRow> EventLogEntries { get; } = new();
@@ -295,6 +299,7 @@ public partial class MainViewModel : ObservableObject
         _broker.ProbeUpdate += payload => _dispatcher.TryEnqueue(() => OnProbe(payload));
         _broker.EventLogUpdate += payload => _dispatcher.TryEnqueue(() => OnEventLog(payload));
         _broker.ShellUpdate += payload => _dispatcher.TryEnqueue(() => OnShell(payload));
+        _broker.ScreenshotUpdate += (pid, payload) => _dispatcher.TryEnqueue(() => OnScreenshot(pid, payload));
         _broker.Start();
 
         _timer = _dispatcher.CreateTimer();
@@ -782,9 +787,59 @@ public partial class MainViewModel : ObservableObject
     {
         if (row.Hwnd == IntPtr.Zero) return;
         await Task.Delay(700);
+        if (AgentThumbnails) return;   // the agent is the live source; don't fight it with client grabs
         var shot = await Task.Run(() => ScreenCapture.Capture(row.Hwnd, 240));
         if (shot is { } s)
             _dispatcher.TryEnqueue(() => { try { row.Thumbnail = ScreenCapture.ToBitmap(s); } catch { } });
+    }
+
+    // ── live agent-side thumbnails (optional) ──────────────────────────────
+    partial void OnAgentThumbnailsChanged(bool value)
+    {
+        _thumbTimer ??= CreateThumbTimer();
+        if (value) { PollThumbnails(); _thumbTimer.Start(); }
+        else _thumbTimer.Stop();
+    }
+
+    partial void OnThumbnailRateChanged(string value)
+    {
+        if (_thumbTimer is not null && int.TryParse(value, out var n))
+            _thumbTimer.Interval = TimeSpan.FromSeconds(Math.Clamp(n, 1, 60));
+    }
+
+    private DispatcherQueueTimer CreateThumbTimer()
+    {
+        var t = _dispatcher.CreateTimer();
+        t.Interval = TimeSpan.FromSeconds(int.TryParse(ThumbnailRate, out var n) ? Math.Clamp(n, 1, 60) : 3);
+        t.Tick += (_, _) => PollThumbnails();
+        return t;
+    }
+
+    /// <summary>Ask every connected agent that supports it for a fresh session screenshot.</summary>
+    private void PollThumbnails()
+    {
+        foreach (var c in Connections)
+            if (c.State is { Status: "connected", ScreenshotAvailable: true } s)
+                _broker.SendCommand(s.Pid, Broker.Format("screenshot", s.Pid, s.Seq, "300"));
+    }
+
+    private async void OnScreenshot(int pid, string payload)
+    {
+        var p = payload.Split('\t');
+        if (p.Length < 3 || p[2].Length == 0) return;
+        var row = Connections.FirstOrDefault(c => c.State?.Pid == pid);
+        if (row is null) return;
+        try
+        {
+            byte[] jpeg = Convert.FromBase64String(p[2]);
+            var bmp = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
+            using var ras = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+            await ras.WriteAsync(jpeg.AsBuffer());
+            ras.Seek(0);
+            await bmp.SetSourceAsync(ras);
+            row.Thumbnail = bmp;
+        }
+        catch { /* bad frame — skip */ }
     }
 
     // Recent connections: hosts from Windows' RDP MRU + any .rdp files in Documents/Desktop. Click to launch.

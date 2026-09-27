@@ -19,6 +19,7 @@ internal interface IAgentData
     CounterSample DvcCounters();
     SystemDetail SystemDetail();
     EventLogList EventLog(string logName, int max);
+    Screenshot Screenshot(int maxWidth, int quality);
 }
 
 /// <summary>Real collectors — the shipped behaviour.</summary>
@@ -33,4 +34,5 @@ internal sealed class RealAgentData(uint sessionId) : IAgentData
     public CounterSample DvcCounters() => Agent.DvcCounters.Snapshot();
     public SystemDetail SystemDetail() => SystemDetailCollector.Collect();
     public EventLogList EventLog(string logName, int max) => EventLogCollector.Collect(logName, max);
+    public Screenshot Screenshot(int maxWidth, int quality) => ScreenshotCollector.Capture(maxWidth, quality);
 }

@@ -91,6 +91,9 @@ message Envelope {
     // -- interactive shell (OFF by default; agent must be started with --allow-shell) --
     ShellRequest        shell_request         = 82;
     ShellResult         shell_result          = 83;
+
+    ScreenshotRequest   screenshot_request    = 84;
+    Screenshot          screenshot            = 85;
   }
 }
 
@@ -288,6 +291,7 @@ message Capabilities {
   bool   file_push        = 15;  // client -> remote
   bool   system_detail    = 16;  // build / updates / drivers / PnP devices (read-only)
   bool   shell            = 17;  // interactive command execution — off unless --allow-shell
+  bool   screenshot       = 18;  // capture the session desktop as a JPEG (for live thumbnails)
 
   // File transfer is confined to these roots (empty => file transfer disabled
   // regardless of file_pull/file_push). Paths outside are rejected by the agent.
@@ -522,4 +526,20 @@ message FileClose {
   Status status      = 2;
   bytes  sha256      = 3;   // 32 bytes, whole-file digest for integrity check
   string message     = 4;   // detail on ABORTED/FAILED
+}
+
+// ── Screenshot ────────────────────────────────────────────────────────────
+// The agent captures its own session desktop and returns a JPEG. This is how a
+// viewer gets a live preview of every connected session at once, regardless of
+// whether the session is minimized/fullscreen on the client.
+message ScreenshotRequest {
+  uint32 max_width = 1;   // downscale so the longest side is <= this (0 => a sane default)
+  uint32 quality   = 2;   // JPEG quality 1..100 (0 => a sane default)
+}
+
+message Screenshot {
+  bytes  jpeg   = 1;
+  uint32 width  = 2;
+  uint32 height = 3;
+  string note   = 4;   // non-empty on failure (e.g. no desktop available)
 }

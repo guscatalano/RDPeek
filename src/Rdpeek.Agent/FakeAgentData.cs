@@ -291,4 +291,7 @@ internal sealed class FakeAgentData : IAgentData
         Ch("dvc::diag::inspector", 200_000, 480_000, 2_000, 4_800, 2.1);
         return s;
     }
+
+    public Screenshot Screenshot(int maxWidth, int quality) =>
+        ScreenshotCollector.Placeholder(_host, maxWidth, quality);
 }
