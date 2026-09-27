@@ -758,12 +758,17 @@ public partial class MainViewModel : ObservableObject
 
     /// <summary>Select a connection and pull its mstsc window to the foreground — used by the sidebar
     /// switcher and the cycle hotkeys. The bring-to-front runs inside mstsc (the `foreground` command).</summary>
+    /// <summary>Set by the UI to wrap each switch in a transition (dip-to-black fade).</summary>
+    public Action<Action>? SwitchTransition;
+
     [RelayCommand]
     public void ActivateConnection(ConnectionRow? row)
     {
         if (row is null) return;
         SelectedConnection = row;
-        if (row.WindowPid > 0) SendWindow("fullscreen");   // bring forward + ensure fullscreen
+        if (row.WindowPid <= 0) return;
+        void doSwitch() => SendWindow("fullscreen");   // bring forward + ensure fullscreen
+        if (SwitchTransition is { } t) t(doSwitch); else doSwitch();
     }
 
     // Recent connections: hosts from Windows' RDP MRU + any .rdp files in Documents/Desktop. Click to launch.

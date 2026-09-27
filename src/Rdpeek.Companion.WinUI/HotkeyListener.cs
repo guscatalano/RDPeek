@@ -17,12 +17,16 @@ public sealed class HotkeyListener : IDisposable
     private const int WH_KEYBOARD_LL = 13;
     private const int WM_KEYDOWN = 0x0100, WM_SYSKEYDOWN = 0x0104, WM_QUIT = 0x0012;
     private const int VK_LEFT = 0x25, VK_RIGHT = 0x27, VK_CONTROL = 0x11, VK_MENU = 0x12;
+    private const uint EVENT_SYSTEM_FOREGROUND = 0x0003, WINEVENT_OUTOFCONTEXT = 0;
 
     private delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
+    private delegate void WinEventProc(IntPtr hook, uint ev, IntPtr hwnd, int idObj, int idChild, uint thread, uint time);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr SetWindowsHookExW(int idHook, HookProc proc, IntPtr hmod, uint threadId);
     [DllImport("user32.dll")] private static extern bool UnhookWindowsHookEx(IntPtr hhk);
     [DllImport("user32.dll")] private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vk);
+    [DllImport("user32.dll")] private static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr hmod, WinEventProc cb, uint pid, uint thread, uint flags);
+    [DllImport("user32.dll")] private static extern bool UnhookWinEvent(IntPtr h);
     [DllImport("user32.dll")] private static extern int GetMessageW(out MSG m, IntPtr hWnd, uint min, uint max);
     [DllImport("user32.dll")] private static extern bool PostThreadMessageW(uint tid, uint msg, IntPtr w, IntPtr l);
     [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
@@ -34,7 +38,9 @@ public sealed class HotkeyListener : IDisposable
     private readonly Thread _thread;
     private readonly ManualResetEventSlim _ready = new();
     private HookProc? _proc;            // kept alive for the hook
+    private WinEventProc? _winProc;     // kept alive for the foreground hook
     private IntPtr _hook;
+    private IntPtr _winHook;
     private uint _tid;
     private volatile bool _enabled;
     private int _lastFire;
@@ -57,12 +63,27 @@ public sealed class HotkeyListener : IDisposable
         _tid = GetCurrentThreadId();
         _proc = HookCallback;
         _hook = SetWindowsHookExW(WH_KEYBOARD_LL, _proc, GetModuleHandleW(null), 0);
+
+        // When the foreground window changes (e.g. an mstsc session gains focus and installs its own
+        // keyboard hook), re-install ours so it's the most-recent — the OS calls the newest LL hook
+        // first, giving us the keys before the RDP client swallows them in fullscreen.
+        _winProc = OnForeground;
+        _winHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _winProc, 0, 0, WINEVENT_OUTOFCONTEXT);
         _ready.Set();
 
-        // Pump so the OS can dispatch LL-hook callbacks on this thread.
+        // Pump so the OS can dispatch LL-hook and WinEvent callbacks on this thread.
         while (GetMessageW(out _, IntPtr.Zero, 0, 0) > 0) { }
 
+        if (_winHook != IntPtr.Zero) UnhookWinEvent(_winHook);
         if (_hook != IntPtr.Zero) UnhookWindowsHookEx(_hook);
+    }
+
+    private void OnForeground(IntPtr hook, uint ev, IntPtr hwnd, int idObj, int idChild, uint thread, uint time)
+    {
+        if (!_enabled) return;
+        // Re-install the keyboard hook so it becomes the newest in the chain (called first).
+        if (_hook != IntPtr.Zero) UnhookWindowsHookEx(_hook);
+        _hook = SetWindowsHookExW(WH_KEYBOARD_LL, _proc!, GetModuleHandleW(null), 0);
     }
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)

@@ -38,6 +38,10 @@ public sealed partial class MainWindow : Window
             else if (e.PropertyName == nameof(MainViewModel.UseFloatingButton)) { if (!_switcherVisible) ShowActiveHandle(); }
         };
 
+        // Dip-to-black transition on every session switch.
+        _fade = new FadeWindow();
+        Vm.SwitchTransition = doSwitch => _fade.RunFade(doSwitch);
+
         // System-tray icon: the primary way to drive the switcher without the dashboard open.
         _tray = new TrayIcon(
             () => new TrayState(Vm.DockRight, Vm.AutoCycle, Vm.ShowConnectionBar, Vm.UseFloatingButton, Vm.HotkeysEnabled),
@@ -111,6 +115,7 @@ public sealed partial class MainWindow : Window
     private readonly EdgeTrigger _edge;
     private readonly EdgeHandleWindow _handle;
     private readonly FloatingButtonWindow _floating;
+    private readonly FadeWindow _fade;
     private readonly TrayIcon _tray;
     private bool _switcherVisible;
     private bool _exiting;
