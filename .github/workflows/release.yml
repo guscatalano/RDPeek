@@ -108,12 +108,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          gh release create ${{ steps.ver.outputs.tag }} `
-            publish/rdpeek-companion.exe `
-            publish/rdpeek-companion.msi `
-            publish/rdpeek-companion.msix `
-            publish/rdpeek-companion-msix.cer `
-            publish/agent/rdpeek-agent.exe `
-            publish/doctor/rdpeek-doctor.exe `
-            publish/rdpeek-bootstrap-win-x64.zip `
-            --title ${{ steps.ver.outputs.tag }} --generate-notes
+          $tag = '${{ steps.ver.outputs.tag }}'
+          $assets = @(
+            'publish/rdpeek-companion.exe',
+            'publish/rdpeek-companion.msi',
+            'publish/rdpeek-companion.msix',
+            'publish/rdpeek-companion-msix.cer',
+            'publish/agent/rdpeek-agent.exe',
+            'publish/doctor/rdpeek-doctor.exe',
+            'publish/rdpeek-bootstrap-win-x64.zip'
+          )
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            # Release exists (e.g. a re-run) — overwrite its assets.
+            gh release upload $tag @assets --clobber
+          } else {
+            gh release create $tag @assets --title $tag --generate-notes
+          }
