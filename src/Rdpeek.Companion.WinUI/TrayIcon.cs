@@ -67,14 +67,16 @@ public sealed class TrayIcon : IDisposable
 
     private readonly Func<TrayState> _getState;
     private readonly Action<int> _onCommand;
+    private readonly string _tip;
     private readonly WndProc _proc;   // kept alive
     private IntPtr _hwnd;
     private NOTIFYICONDATAW _data;
 
-    public TrayIcon(Func<TrayState> getState, Action<int> onCommand)
+    public TrayIcon(Func<TrayState> getState, Action<int> onCommand, string? tip = null)
     {
         _getState = getState;
         _onCommand = onCommand;
+        _tip = string.IsNullOrEmpty(tip) ? "RDPeek — RDP window switcher" : tip;
         _proc = WndProcImpl;
 
         var hinst = GetModuleHandleW(null);
@@ -101,7 +103,7 @@ public sealed class TrayIcon : IDisposable
             uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP,
             uCallbackMessage = WM_TRAY,
             hIcon = icon,
-            szTip = "RDPeek — RDP window switcher",
+            szTip = _tip,
         };
         Shell_NotifyIconW(NIM_ADD, ref _data);
     }

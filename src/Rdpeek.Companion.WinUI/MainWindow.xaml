@@ -18,6 +18,7 @@
         <!-- header -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12">
             <TextBlock Text="RDPeek" FontSize="26" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Text="{x:Bind Vm.Version}" FontSize="12" Opacity="0.55" VerticalAlignment="Bottom" Margin="0,0,0,5" />
             <Button Content="Copy agent-install command" Command="{x:Bind Vm.CopyInstallCommand}" VerticalAlignment="Center" />
             <Button Content="Refresh" Command="{x:Bind Vm.RefreshCommand}" VerticalAlignment="Center" />
             <Button Content="Export bundle" Command="{x:Bind Vm.ExportBundleCommand}" VerticalAlignment="Center"

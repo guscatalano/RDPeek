@@ -1469,6 +1469,9 @@ public partial class MainViewModel : ObservableObject
     /// <summary>Set by the window so an MSI-install update can exit the app to release file locks.</summary>
     public Action? RequestExit;
 
+    /// <summary>Running build, e.g. "v0.3.1" — shown so you can tell exactly what's installed.</summary>
+    public string Version => "v" + UpdateCheck.CurrentVersion();
+
     /// <summary>Check GitHub Releases once at startup; on a newer version, set a quiet header link.
     /// Never nags — no popup, and it just stays hidden when up to date or offline.</summary>
     private async Task CheckForUpdateAsync()
