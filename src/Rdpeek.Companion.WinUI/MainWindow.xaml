@@ -972,14 +972,6 @@
                                     <ToggleSwitch IsOn="{x:Bind Vm.UseFloatingButton, Mode=TwoWay}"
                                                   OnContent="Floating circle" OffContent="Edge nub" />
                                 </StackPanel>
-                                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                                    <ToggleSwitch IsOn="{x:Bind Vm.AgentThumbnails, Mode=TwoWay}"
-                                                  OnContent="Live thumbnails (agent)" OffContent="Live thumbnails (agent)"
-                                                  ToolTipService.ToolTip="The in-session agent screenshots each session's desktop for live previews in the switcher (needs an agent that advertises screenshot support)." />
-                                    <TextBlock Text="every" VerticalAlignment="Center" />
-                                    <TextBox Width="46" Text="{x:Bind Vm.ThumbnailRate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock Text="sec" VerticalAlignment="Center" />
-                                </StackPanel>
 
                                 <!-- ContentControl (a Control, so it has IsEnabled) greys out the whole
                                      group when no connection is selected; Panels have no IsEnabled. -->
