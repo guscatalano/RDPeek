@@ -84,6 +84,10 @@ public static class Broker
     /// </summary>
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, string> _lastStatus = new();
 
+    /// <summary>The client (mstsc/msrdc) process id per connection seq, replayed on reconnect so the
+    /// companion can join this connection to its window exactly.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, string> _lastClientPid = new();
+
     public static string Format(string kind, int pid, int seq, string payload = "")
         => $"{kind}|{pid}|{seq}|{payload}";
 
@@ -106,7 +110,8 @@ public static class Broker
         try
         {
             string line = Format(ev, pid, seq, host);
-            if (ev == "gone") { _lastStatus.TryRemove(seq, out _); _lastCaps.TryRemove(seq, out _); }
+            if (ev == "gone") { _lastStatus.TryRemove(seq, out _); _lastCaps.TryRemove(seq, out _); _lastClientPid.TryRemove(seq, out _); }
+            else if (ev == "clientpid") _lastClientPid[seq] = line;   // remembered + replayed like caps
             else if (IsStatus(ev)) _lastStatus[seq] = line;
 
             EnsureSenderStarted();
@@ -165,6 +170,8 @@ public static class Broker
                         // missed the originals (e.g. it was started/relaunched after RDP connected).
                         foreach (var status in _lastStatus.Values)
                             if (writer is not null && !TryWrite(writer, status)) Disconnect(ref pipe, ref writer);
+                        foreach (var cpid in _lastClientPid.Values)
+                            if (writer is not null && !TryWrite(writer, cpid)) Disconnect(ref pipe, ref writer);
                         foreach (var caps in _lastCaps.Values)
                             if (writer is not null && !TryWrite(writer, caps)) Disconnect(ref pipe, ref writer);
                     }

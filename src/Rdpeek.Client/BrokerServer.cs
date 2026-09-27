@@ -19,6 +19,7 @@ public sealed class BrokerServer : IDisposable
     {
         public int Pid;
         public int Seq;
+        public int ClientPid;   // the RDP client (mstsc/msrdc) window pid this connection belongs to
         public string Status = "";
         public string Host = "";
         public SysInfoSnapshot? Sysinfo;
@@ -176,6 +177,9 @@ public sealed class BrokerServer : IDisposable
                     case "listening":
                         st.Status = kind;
                         if (!string.IsNullOrEmpty(payload)) st.Host = payload;
+                        break;
+                    case "clientpid":
+                        if (int.TryParse(payload, out var cpid)) st.ClientPid = cpid;
                         break;
                     case "sysinfo":
                         try
