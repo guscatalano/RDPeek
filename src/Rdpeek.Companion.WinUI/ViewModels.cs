@@ -784,14 +784,10 @@ public partial class MainViewModel : ObservableObject
         if (row is null) return;
         SelectedConnection = row;
         if (row.WindowPid <= 0) return;
-        void doSwitch()
-        {
-            // Focus works with or without the in-process plugin: pull the window forward from here
-            // (Companion-side, cross-process). If the plugin IS loaded, "fullscreen" then also ensures
-            // fullscreen; if it's absent it's a no-op and the switcher already shows the reconnect note.
-            RdpWindows.ForceForeground(row.Hwnd);
-            SendWindow("fullscreen");
-        }
+        // Foreground + true fullscreen from the Companion itself (inject the client's Ctrl+Alt+Break
+        // toggle). Works for mstsc AND msrdc, plugin loaded or not — so no plugin dependency to switch.
+        // Off the UI thread because it polls for ~0.5s waiting on focus/coverage.
+        void doSwitch() => _ = Task.Run(() => RdpWindows.EnterFullscreen(row.Hwnd));
         if (SwitchTransition is { } t) t(doSwitch); else doSwitch();
         CaptureThumbnail(row);
     }
@@ -814,8 +810,8 @@ public partial class MainViewModel : ObservableObject
             }
             catch { ok = false; }
             _dispatcher.TryEnqueue(() => row.ControlHint = ok ? "" :
-                "No window plugin in this session — focus works, but fullscreen/overlay need it. " +
-                "Fully quit the client (msrdc keeps a background process) and reconnect.");
+                "Window plugin not loaded — on-screen labels & extra window controls need it (fully " +
+                "quit the client, msrdc keeps a background process, and reconnect). Focus & fullscreen still work.");
         });
     }
 

@@ -46,6 +46,53 @@ public static class RdpWindows
     [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
     [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
 
+    [DllImport("user32.dll")] private static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO mi);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MONITORINFO { public int cbSize; public RECT rcMonitor, rcWork; public uint dwFlags; }
+
+    private const byte VK_CONTROL = 0x11, VK_MENU = 0x12, VK_CANCEL = 0x03;   // Ctrl, Alt, Break
+    private const uint KEYEVENTF_KEYUP = 0x0002;
+
+    /// <summary>True when the window covers its monitor (already in RDP fullscreen), so we don't toggle
+    /// it back out.</summary>
+    public static bool CoversMonitor(IntPtr hwnd)
+    {
+        if (!GetWindowRect(hwnd, out var r)) return false;
+        IntPtr mon = MonitorFromWindow(hwnd, 2 /* MONITOR_DEFAULTTONEAREST */);
+        var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfo(mon, ref mi)) return false;
+        return r.Left <= mi.rcMonitor.Left + 1 && r.Top <= mi.rcMonitor.Top + 1
+            && r.Right >= mi.rcMonitor.Right - 1 && r.Bottom >= mi.rcMonitor.Bottom - 1;
+    }
+
+    /// <summary>Bring an RDP session forward and put it into true client fullscreen by injecting the
+    /// client's own Ctrl+Alt+Break toggle — exactly what the in-process plugin does, but from here, so
+    /// it works for mstsc AND msrdc whether or not the plugin is loaded. keybd_event is global input to
+    /// the foreground window, so we foreground first and wait until the client actually has focus, then
+    /// only toggle if it isn't already fullscreen. BLOCKS (~0.5s of polling) — call off the UI thread.</summary>
+    public static void EnterFullscreen(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return;
+        ForceForeground(hwnd);
+        // The toggle must land on the client, not on whatever had focus — wait for it to be foreground.
+        for (int i = 0; i < 12 && GetForegroundWindow() != hwnd; i++) System.Threading.Thread.Sleep(30);
+        // Give a session still settling (e.g. animating back from minimized-fullscreen) a chance to be
+        // seen as already-fullscreen, so we don't toggle it straight back out.
+        bool full = false;
+        for (int i = 0; i < 8 && !(full = CoversMonitor(hwnd)); i++) System.Threading.Thread.Sleep(60);
+        if (full) return;
+        keybd_event(VK_CONTROL, 0, 0, UIntPtr.Zero);
+        keybd_event(VK_MENU, 0, 0, UIntPtr.Zero);
+        keybd_event(VK_CANCEL, 0, 0, UIntPtr.Zero);
+        System.Threading.Thread.Sleep(30);
+        keybd_event(VK_CANCEL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+        keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+        keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+    }
+
     /// <summary>Pull a window to the foreground from another process. Windows blocks a plain
     /// SetForegroundWindow across the foreground-lock, so we briefly attach our input queue to the
     /// current foreground thread (and the target's) — the standard trick. Lets the switcher focus a
