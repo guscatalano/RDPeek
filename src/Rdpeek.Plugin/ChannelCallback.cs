@@ -401,7 +401,8 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
             {
                 _defaultRoot = caps.Capabilities.FileRoots.FirstOrDefault() ?? "";
                 Logger.Log($"agent capabilities: build={caps.Capabilities.AgentBuild} " +
-                           $"sysinfo={caps.Capabilities.Sysinfo} processes={caps.Capabilities.ProcessList} shell={caps.Capabilities.Shell}");
+                           $"sysinfo={caps.Capabilities.Sysinfo} processes={caps.Capabilities.ProcessList} " +
+                           $"shell={caps.Capabilities.Shell} screenshot={caps.Capabilities.Screenshot}");
                 // Let the companion gate features it can't use (e.g. grey out the shell).
                 var flags = new List<string>();
                 if (caps.Capabilities.Shell) flags.Add("shell");
