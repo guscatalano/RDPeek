@@ -51,6 +51,16 @@ jobs:
         shell: pwsh
         run: Copy-Item publish/companion/Rdpeek.Companion.WinUI.exe publish/rdpeek-companion.exe
 
+      # Stage the client plugins into the MSI folder so one install registers everything (the MSI's
+      # Package.wxs writes their COM + AddIn registry). The standalone exe and MSIX stay companion-only.
+      - name: Stage client plugins for the MSI
+        shell: pwsh
+        run: |
+          dotnet publish src/Rdpeek.Plugin -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o publish/plugin
+          Copy-Item publish/plugin/rdpeek-plugin.exe publish/companion/
+          & "$env:GITHUB_WORKSPACE\src\Rdpeek.WindowPlugin\build.cmd"
+          Copy-Item src/Rdpeek.WindowPlugin/bin/rdpeek-window-plugin.dll publish/companion/
+
       # ── Companion: MSI (WiX) ────────────────────────────────────────────
       - name: Install WiX
         shell: pwsh
