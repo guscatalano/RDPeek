@@ -85,12 +85,19 @@
                                     <ListView.ItemTemplate>
                                         <DataTemplate x:DataType="local:RecentConnection">
                                             <Grid ColumnSpacing="10" Padding="2,5">
-                                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
                                                 <FontIcon Grid.Column="0" FontFamily="Segoe MDL2 Assets" Glyph="{x:Bind Glyph}" FontSize="14" VerticalAlignment="Center" />
                                                 <StackPanel Grid.Column="1" Spacing="1">
                                                     <TextBlock Text="{x:Bind Display}" TextTrimming="CharacterEllipsis" />
                                                     <TextBlock Text="{x:Bind Kind}" FontSize="11" Opacity="0.6" />
                                                 </StackPanel>
+                                                <Button Grid.Column="2" Click="OnRemoveRecent" Background="Transparent" BorderThickness="0"
+                                                        Padding="6" VerticalAlignment="Center"
+                                                        ToolTipService.ToolTip="Remove from this list">
+                                                    <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE711;" FontSize="12" />
+                                                </Button>
                                             </Grid>
                                         </DataTemplate>
                                     </ListView.ItemTemplate>

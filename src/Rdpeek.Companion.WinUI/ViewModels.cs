@@ -767,9 +767,50 @@ public partial class MainViewModel : ObservableObject
 
     // Recent connections: hosts from Windows' RDP MRU + any .rdp files in Documents/Desktop. Click to launch.
     public ObservableCollection<RecentConnection> Recent { get; } = new();
+    private HashSet<string> _hiddenFiles = new(StringComparer.OrdinalIgnoreCase);
+
+    private static string HiddenFilePath => System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RDPeek", "hidden-rdp.txt");
+
+    private void LoadHidden()
+    {
+        try { if (System.IO.File.Exists(HiddenFilePath)) _hiddenFiles = new(System.IO.File.ReadAllLines(HiddenFilePath), StringComparer.OrdinalIgnoreCase); }
+        catch { /* ignore */ }
+    }
+
+    /// <summary>Remove a recent entry: delete the MRU registry value for a host, or hide a .rdp file
+    /// from the list (persisted; the file itself is left alone).</summary>
+    [RelayCommand]
+    public void RemoveRecent(RecentConnection? r)
+    {
+        if (r is null) return;
+        if (r.IsFile)
+        {
+            _hiddenFiles.Add(r.Target);
+            try
+            {
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(HiddenFilePath)!);
+                System.IO.File.WriteAllLines(HiddenFilePath, _hiddenFiles);
+            }
+            catch { /* ignore */ }
+        }
+        else
+        {
+            try
+            {
+                using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Terminal Server Client\Default", true);
+                if (k is not null)
+                    foreach (var name in k.GetValueNames().Where(n => n.StartsWith("MRU", StringComparison.OrdinalIgnoreCase)))
+                        if (k.GetValue(name) as string == r.Target) k.DeleteValue(name, false);
+            }
+            catch { /* ignore */ }
+        }
+        Recent.Remove(r);
+    }
 
     public void LoadRecent()
     {
+        LoadHidden();
         Recent.Clear();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         try
@@ -786,7 +827,8 @@ public partial class MainViewModel : ObservableObject
             try
             {
                 foreach (var f in System.IO.Directory.EnumerateFiles(Environment.GetFolderPath(folder), "*.rdp"))
-                    if (seen.Add(f)) Recent.Add(new RecentConnection(System.IO.Path.GetFileNameWithoutExtension(f), f, true));
+                    if (!_hiddenFiles.Contains(f) && seen.Add(f))
+                        Recent.Add(new RecentConnection(System.IO.Path.GetFileNameWithoutExtension(f), f, true));
             }
             catch { /* folder unavailable */ }
     }

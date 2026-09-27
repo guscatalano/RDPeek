@@ -90,6 +90,11 @@ public sealed partial class MainWindow : Window
         if (e.ClickedItem is RecentConnection r) Vm.LaunchRecentCommand.Execute(r);
     }
 
+    private void OnRemoveRecent(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is RecentConnection r) Vm.RemoveRecentCommand.Execute(r);
+    }
+
     private void OnShellInputKey(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
         if (e.Key == Windows.System.VirtualKey.Enter && Vm.RunShellCommand.CanExecute(null))
