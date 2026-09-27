@@ -1446,6 +1446,10 @@ public partial class MainViewModel : ObservableObject
         catch { _dispatcher.TryEnqueue(() => DriverSummary = "Graphics drivers — advisory check unavailable"); }
     }
 
+    private UpdateInfo? _pendingUpdate;
+    /// <summary>Set by the window so an MSI-install update can exit the app to release file locks.</summary>
+    public Action? RequestExit;
+
     /// <summary>Check GitHub Releases once at startup; on a newer version, set a quiet header link.
     /// Never nags — no popup, and it just stays hidden when up to date or offline.</summary>
     private async Task CheckForUpdateAsync()
@@ -1454,9 +1458,43 @@ public partial class MainViewModel : ObservableObject
         if (info is { UpdateAvailable: true })
             _dispatcher.TryEnqueue(() =>
             {
-                UpdateNotice = $"Update available: v{info.Latest}  (you have v{info.Current})";
+                _pendingUpdate = info;
+                string how = UpdateCheck.IsMsiInstall() ? "click to install" : "click for download";
+                UpdateNotice = $"Update available: v{info.Latest}  ({how})";
                 UpdateUri = new Uri(info.Url);
             });
+    }
+
+    /// <summary>Apply the pending update the right way for how RDPeek was installed: an MSI install
+    /// downloads the new MSI, launches msiexec, and exits so the upgrade can replace files; a standalone
+    /// build opens the releases page (a running single-file exe can't safely replace itself). Any failure
+    /// falls back to opening the releases page.</summary>
+    [RelayCommand]
+    private async Task ApplyUpdate()
+    {
+        var info = _pendingUpdate;
+        if (info is null) return;
+        try
+        {
+            if (UpdateCheck.IsMsiInstall() && !string.IsNullOrEmpty(info.MsiUrl))
+            {
+                UpdateNotice = $"Downloading v{info.Latest}…";
+                var path = await UpdateCheck.DownloadAsync(info.MsiUrl!, "rdpeek-companion.msi");
+                if (path is not null)
+                {
+                    System.Diagnostics.Process.Start(
+                        new System.Diagnostics.ProcessStartInfo("msiexec.exe", $"/i \"{path}\"") { UseShellExecute = true });
+                    RequestExit?.Invoke();   // release file locks so the upgrade can replace the exe/plugins
+                    return;
+                }
+                UpdateNotice = $"Update available: v{info.Latest}  (click for download)";
+            }
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(info.Url) { UseShellExecute = true });
+        }
+        catch
+        {
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(info.Url) { UseShellExecute = true }); } catch { }
+        }
     }
 
     /// <summary>Best-effort teardown before the process exits: stop the timer and release the broker

@@ -49,6 +49,9 @@ public sealed partial class MainWindow : Window
 
         // Closing the dashboard hides it to the tray rather than quitting; Exit (tray) really quits.
         AppWindow.Closing += (_, e) => { if (!_exiting) { e.Cancel = true; AppWindow.Hide(); } };
+
+        // An MSI-install update exits the app (to unlock files) after launching the installer.
+        Vm.RequestExit = () => DispatcherQueue.TryEnqueue(ExitApp);
     }
 
     private void OnNavChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
