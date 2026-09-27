@@ -30,6 +30,7 @@ public partial class ConnectionRow : ObservableObject
     [ObservableProperty] private string _throughput = "";
     [ObservableProperty] private string _healthText = "";
     [ObservableProperty] private Brush _healthBrush = UiBrushes.Muted;
+    [ObservableProperty] private Microsoft.UI.Xaml.Media.ImageSource? _thumbnail;   // last-seen preview
     public BrokerServer.AgentState? State { get; set; }
 }
 
@@ -72,6 +73,9 @@ public static class Ui
         "Fail" => "",   // cancel
         _ => "",        // info
     };
+
+    public static Microsoft.UI.Xaml.Visibility VisibleIfSet(object? value) =>
+        value is null ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
 
     public static string PluginDetail(string activation, string module, string bitness)
     {
@@ -769,6 +773,18 @@ public partial class MainViewModel : ObservableObject
         if (row.WindowPid <= 0) return;
         void doSwitch() => SendWindow("fullscreen");   // bring forward + ensure fullscreen
         if (SwitchTransition is { } t) t(doSwitch); else doSwitch();
+        CaptureThumbnail(row);
+    }
+
+    /// <summary>Grab a fresh preview of a session once it's the visible foreground window (after the
+    /// switch + fade settle). Off the UI thread for the GDI grab; back on it to build the bitmap.</summary>
+    private async void CaptureThumbnail(ConnectionRow row)
+    {
+        if (row.Hwnd == IntPtr.Zero) return;
+        await Task.Delay(700);
+        var shot = await Task.Run(() => ScreenCapture.Capture(row.Hwnd, 240));
+        if (shot is { } s)
+            _dispatcher.TryEnqueue(() => { try { row.Thumbnail = ScreenCapture.ToBitmap(s); } catch { } });
     }
 
     // Recent connections: hosts from Windows' RDP MRU + any .rdp files in Documents/Desktop. Click to launch.

@@ -47,27 +47,34 @@
                   Padding="6,4">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:ConnectionRow">
-                    <Grid ColumnSpacing="10" Padding="4,7">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Ellipse Grid.Column="0" Width="11" Height="11" VerticalAlignment="Center"
-                                 Fill="{x:Bind HealthBrush, Mode=OneWay}" />
-                        <StackPanel Grid.Column="1" Spacing="1">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <TextBlock Text="{x:Bind Tag}" FontWeight="SemiBold"
-                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-                                <TextBlock Text="{x:Bind Host, Mode=OneWay}" FontWeight="SemiBold"
+                    <StackPanel Spacing="6" Padding="4,7">
+                        <!-- last-seen preview (appears once you've switched to the session) -->
+                        <Border CornerRadius="4" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                Visibility="{x:Bind local:Ui.VisibleIfSet(Thumbnail), Mode=OneWay}">
+                            <Image Source="{x:Bind Thumbnail, Mode=OneWay}" Stretch="Uniform" MaxHeight="122" />
+                        </Border>
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse Grid.Column="0" Width="11" Height="11" VerticalAlignment="Center"
+                                     Fill="{x:Bind HealthBrush, Mode=OneWay}" />
+                            <StackPanel Grid.Column="1" Spacing="1">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="{x:Bind Tag}" FontWeight="SemiBold"
+                                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                    <TextBlock Text="{x:Bind Host, Mode=OneWay}" FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <TextBlock Text="{x:Bind Window, Mode=OneWay}" FontSize="11" Opacity="0.7"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind HealthText, Mode=OneWay}" FontSize="11"
+                                           Foreground="{x:Bind HealthBrush, Mode=OneWay}"
                                            TextTrimming="CharacterEllipsis" />
                             </StackPanel>
-                            <TextBlock Text="{x:Bind Window, Mode=OneWay}" FontSize="11" Opacity="0.7"
-                                       TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="{x:Bind HealthText, Mode=OneWay}" FontSize="11"
-                                       Foreground="{x:Bind HealthBrush, Mode=OneWay}"
-                                       TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                    </Grid>
+                        </Grid>
+                    </StackPanel>
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
