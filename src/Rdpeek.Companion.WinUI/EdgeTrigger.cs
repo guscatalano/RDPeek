@@ -52,7 +52,7 @@ public sealed class EdgeTrigger : IDisposable
                     if (SystemParametersInfoW(SPI_GETWORKAREA, 0, ref wa, 0)) { left = wa.Left; top = wa.Top; right = wa.Right; bottom = wa.Bottom; }
 
                     int centerY = (top + bottom) / 2;
-                    int band = Math.Max(120, (bottom - top) / 6);           // a tall zone around the middle
+                    const int band = 40;   // ~match the visible nub's vertical extent (nub is 72px tall)
                     bool nearMid = Math.Abs(p.Y - centerY) <= band;
                     bool inZone = _dockRight ? (p.X >= right - 2 && nearMid) : (p.X <= left + 2 && nearMid);
                     bool pulledAway = _dockRight ? (p.X < right - 40) : (p.X > left + 40);
