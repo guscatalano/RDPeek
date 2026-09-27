@@ -46,6 +46,7 @@ public sealed partial class FloatingButtonWindow : Window
             p.IsAlwaysOnTop = true;
             p.IsResizable = false; p.IsMaximizable = false; p.IsMinimizable = false;
         }
+        AppWindow.IsShownInSwitchers = false;   // keep it out of the taskbar / Alt+Tab
 
         // Lift the OS minimum tracking size so the window can be a true 52px, then size + place it.
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);

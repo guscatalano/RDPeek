@@ -12,8 +12,12 @@ using Rdpeek.Plugin;
 bool embedding = args.Any(a =>
     a.TrimStart('-', '/').Equals("Embedding", StringComparison.OrdinalIgnoreCase));
 
+// Built as a WinExe so mstsc's -Embedding activation shows no console window. For the dev CLI
+// subcommands, attach to the launching terminal's console so their output is still visible.
 if (embedding)
     return PluginHost.RunServer();
+
+NativeConsole.AttachParent();
 
 if (args.Length > 0 && args[0].Equals("channels", StringComparison.OrdinalIgnoreCase))
 {
@@ -30,3 +34,11 @@ Console.WriteLine();
 Console.WriteLine("  rdpeek-plugin channels   show how DVCs are configured on this client");
 Console.WriteLine("Runtime log: %TEMP%\\rdpeek-plugin.log");
 return 0;
+
+static class NativeConsole
+{
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern bool AttachConsole(int processId);
+    // ATTACH_PARENT_PROCESS: write to the terminal that launched us (no-op when there isn't one).
+    public static void AttachParent() { try { AttachConsole(-1); } catch { } }
+}

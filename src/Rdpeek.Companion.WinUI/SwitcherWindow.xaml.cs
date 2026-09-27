@@ -34,6 +34,7 @@ public sealed partial class SwitcherWindow : Window
             p.IsMaximizable = false;
             p.IsMinimizable = false;
         }
+        AppWindow.IsShownInSwitchers = false;   // keep it out of the taskbar / Alt+Tab
 
         DockTo(false);
         Activated += OnActivated;

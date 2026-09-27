@@ -45,6 +45,7 @@ public sealed partial class EdgeHandleWindow : Window
             p.IsMaximizable = false;
             p.IsMinimizable = false;
         }
+        AppWindow.IsShownInSwitchers = false;   // keep it out of the taskbar / Alt+Tab
 
         // Lift the OS minimum tracking size so the sliver can be genuinely thin.
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
