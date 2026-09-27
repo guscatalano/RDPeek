@@ -13,6 +13,7 @@ using Rdpeek.Doctor;
 //     --seconds N                          Stop after N seconds (default: Ctrl+C).
 //   rdpeek-doctor drivers                  Check client display drivers against RDPeek's
 //                                          known-bad list (fetched from GitHub).
+//   rdpeek-doctor update                   Check GitHub Releases for a newer RDPeek.
 
 int seconds = 0;
 int secondsAt = Array.FindIndex(args, a => a.Equals("--seconds", StringComparison.OrdinalIgnoreCase));
@@ -31,6 +32,23 @@ switch (args.Length > 0 ? args[0].ToLowerInvariant() : "")
 
     case "drivers":
         return DriverCheck.Run();
+
+    case "update":
+    {
+        var info = UpdateCheck.CheckAsync().GetAwaiter().GetResult();
+        Console.WriteLine();
+        if (info is null)
+            Console.WriteLine("  Update check unavailable (offline, rate-limited, or version unknown).");
+        else if (info.UpdateAvailable)
+        {
+            Console.WriteLine($"  Update available: {info.Current} → {info.Latest}");
+            Console.WriteLine($"  {info.Url}");
+        }
+        else
+            Console.WriteLine($"  RDPeek is up to date (v{info.Current}).");
+        Console.WriteLine();
+        return 0;
+    }
 }
 
 using var comScope = DoctorEngine.ComScope();

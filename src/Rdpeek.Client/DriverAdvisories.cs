@@ -50,6 +50,11 @@ public static class DriverAdvisories
         [JsonPropertyName("severity")]    public string Severity { get; set; } = "warn"; // info | warn | fail
         [JsonPropertyName("badVersions")] public List<string> BadVersions { get; set; } = new();
         [JsonPropertyName("range")]       public VersionRange? Range { get; set; }
+        // NVIDIA only: match on the GeForce/branch version (e.g. "378.49") that forums cite, since WMI
+        // reports the WDDM form (21.21.13.7849) whose last 5 digits encode it. Optional upper bound for
+        // a range; leave nvidiaVersionMax empty to match a single build.
+        [JsonPropertyName("nvidiaVersion")]    public string NvidiaVersion { get; set; } = "";
+        [JsonPropertyName("nvidiaVersionMax")] public string NvidiaVersionMax { get; set; } = "";
         [JsonPropertyName("reason")]      public string Reason { get; set; } = "";
         [JsonPropertyName("fixedIn")]     public string FixedIn { get; set; } = "";
         [JsonPropertyName("link")]        public string Link { get; set; } = "";
@@ -187,10 +192,26 @@ public static class DriverAdvisories
     {
         if (e.BadVersions.Contains("*")) return true;                    // any version of this adapter
         if (string.IsNullOrWhiteSpace(version)) return false;
+        // NVIDIA branch-version match (against the WMI version's encoded build).
+        if (!string.IsNullOrEmpty(e.NvidiaVersion) && NvidiaBuild(version) is int build)
+        {
+            int lo = NvidiaBuild(e.NvidiaVersion) ?? int.MaxValue;
+            int hi = string.IsNullOrEmpty(e.NvidiaVersionMax) ? lo : (NvidiaBuild(e.NvidiaVersionMax) ?? lo);
+            if (build >= lo && build <= hi) return true;
+        }
         if (e.BadVersions.Any(v => v.Equals(version, StringComparison.OrdinalIgnoreCase))) return true;
         if (e.Range is { } r && !string.IsNullOrEmpty(r.Min) && !string.IsNullOrEmpty(r.Max))
             return CompareVersions(version, r.Min) >= 0 && CompareVersions(version, r.Max) <= 0;
         return false;
+    }
+
+    /// <summary>The 5-digit NVIDIA build encoded in the last digits of a version — accepts either the
+    /// WMI form (21.21.13.7849 → 37849) or the marketing form (378.49 → 37849).</summary>
+    public static int? NvidiaBuild(string version)
+    {
+        var digits = new string(version.Where(char.IsDigit).ToArray());
+        if (digits.Length < 5) return null;
+        return int.TryParse(digits[^5..], out var b) ? b : null;
     }
 
     /// <summary>Compare dotted-numeric driver versions (e.g. 31.0.15.3623). Non-numeric parts sort as 0.</summary>

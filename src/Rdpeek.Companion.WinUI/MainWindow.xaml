@@ -22,6 +22,9 @@
             <Button Content="Refresh" Command="{x:Bind Vm.RefreshCommand}" VerticalAlignment="Center" />
             <Button Content="Export bundle" Command="{x:Bind Vm.ExportBundleCommand}" VerticalAlignment="Center"
                     ToolTipService.ToolTip="Collect host, channels, counters, frames and diagnostics into a shareable JSON file" />
+            <HyperlinkButton Content="{x:Bind Vm.UpdateNotice, Mode=OneWay}" NavigateUri="{x:Bind Vm.UpdateUri, Mode=OneWay}"
+                             VerticalAlignment="Center" Foreground="{ThemeResource SystemFillColorAttentionBrush}"
+                             Visibility="{x:Bind local:Ui.VisibleIfText(Vm.UpdateNotice), Mode=OneWay}" />
         </StackPanel>
 
         <!-- persistent connection / liveness bar (applies to whichever tab is open) -->
@@ -809,7 +812,7 @@
                                                         <TextBlock Text="{x:Bind Side}" Opacity="0.6" FontFamily="Consolas" />
                                                     </StackPanel>
                                                     <TextBlock Text="{x:Bind Message}" TextWrapping="Wrap" Opacity="0.9" />
-                                                    <HyperlinkButton Content="{x:Bind Link}" NavigateUri="{x:Bind Link}"
+                                                    <HyperlinkButton Content="{x:Bind Link}" NavigateUri="{x:Bind LinkUri}"
                                                                      Padding="0" Visibility="{x:Bind local:Ui.VisibleIfText(Link)}" />
                                                 </StackPanel>
                                             </Border>

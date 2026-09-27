@@ -134,6 +134,7 @@ public sealed record DriverAdvisoryRow(string Severity, string Adapter, string S
 {
     public Brush Brush => Severity switch { "fail" => UiBrushes.Fail, "info" => UiBrushes.Info, _ => UiBrushes.Warn };
     public string Glyph => Severity == "info" ? "" : "";   // Info : Warning (Segoe MDL2)
+    public Uri? LinkUri => string.IsNullOrEmpty(Link) ? null : new Uri(Link);
 }
 
 /// <summary>A PnP device; HasProblem drives the red highlight.</summary>
@@ -197,6 +198,9 @@ public partial class MainViewModel : ObservableObject
     // Graphics-driver advisories (client + server) from the GitHub known-bad list.
     public ObservableCollection<DriverAdvisoryRow> DriverWarnings { get; } = new();
     [ObservableProperty] private string _driverSummary = "Checking display drivers…";
+    // Update check — empty notice unless a newer RDPeek is on GitHub Releases.
+    [ObservableProperty] private string _updateNotice = "";
+    [ObservableProperty] private Uri? _updateUri;
     private DriverAdvisories.BadDriverList? _badDrivers;
     private List<DriverAdvisoryRow> _clientDriverAdvisories = new();
     private List<DriverAdvisoryRow> _serverDriverAdvisories = new();
@@ -333,6 +337,7 @@ public partial class MainViewModel : ObservableObject
         Refresh();
         _ = RunDiagnostics();   // plugin-registration health, in the background
         _ = LoadDriverAdvisoriesAsync();   // graphics-driver advisories, in the background
+        _ = CheckForUpdateAsync();         // newer RDPeek on GitHub? (quiet — a header link only)
 
         // Global switch-window hotkeys (Ctrl+Alt+Right / Left). Fired on the listener thread → marshal.
         _hotkeys = new HotkeyListener();
@@ -1436,6 +1441,19 @@ public partial class MainViewModel : ObservableObject
             });
         }
         catch { _dispatcher.TryEnqueue(() => DriverSummary = "Graphics drivers — advisory check unavailable"); }
+    }
+
+    /// <summary>Check GitHub Releases once at startup; on a newer version, set a quiet header link.
+    /// Never nags — no popup, and it just stays hidden when up to date or offline.</summary>
+    private async Task CheckForUpdateAsync()
+    {
+        var info = await UpdateCheck.CheckAsync();
+        if (info is { UpdateAvailable: true })
+            _dispatcher.TryEnqueue(() =>
+            {
+                UpdateNotice = $"Update available: v{info.Latest}  (you have v{info.Current})";
+                UpdateUri = new Uri(info.Url);
+            });
     }
 
     private void EvaluateServerDrivers(SystemDetail d)
