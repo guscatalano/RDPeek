@@ -272,7 +272,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _showConnectionBar;       // toggle mstsc's own connection bar
     [ObservableProperty] private bool _dockRight;               // dock the switcher/handle on the right edge
     [ObservableProperty] private bool _useFloatingButton;       // floating draggable circle instead of the edge nub
-    [ObservableProperty] private bool _agentThumbnails;         // live per-session previews via the agent (optional)
+    [ObservableProperty] private bool _agentThumbnails;         // live per-session previews via the agent (opt-in)
     [ObservableProperty] private string _thumbnailRate = "3";   // seconds between agent screenshot polls
     private DispatcherQueueTimer? _thumbTimer;
 
@@ -316,6 +316,7 @@ public partial class MainViewModel : ObservableObject
         _hotkeys.Pressed += id => _dispatcher.TryEnqueue(
             () => CycleConnection(id == HotkeyListener.PrevId ? -1 : +1));
         if (HotkeysEnabled) _hotkeys.Enable();   // default-on doesn't fire OnChanged, so enable here
+        if (AgentThumbnails) { _thumbTimer ??= CreateThumbTimer(); _thumbTimer.Start(); }
 
         LoadRecent();
     }
