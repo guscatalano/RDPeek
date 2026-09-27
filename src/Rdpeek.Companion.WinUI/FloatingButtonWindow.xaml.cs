@@ -17,11 +17,20 @@ public sealed partial class FloatingButtonWindow : Window
 
     private const int Size = 52;
 
+    private const int GWLP_WNDPROC = -4;
+    private const uint WM_GETMINMAXINFO = 0x0024;
+
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT p);
     [DllImport("user32.dll")] private static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool redraw);
     [DllImport("gdi32.dll")] private static extern IntPtr CreatePolygonRgn(POINT[] pts, int count, int mode);
+    [DllImport("user32.dll")] private static extern IntPtr SetWindowLongPtrW(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+    [DllImport("user32.dll")] private static extern IntPtr CallWindowProcW(IntPtr prev, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)] private struct MINMAXINFO { public POINT ptReserved, ptMaxSize, ptMaxPosition, ptMinTrackSize, ptMaxTrackSize; }
+    private delegate IntPtr WndProc(IntPtr h, uint m, IntPtr w, IntPtr l);
 
+    private WndProc? _proc;   // kept alive
+    private IntPtr _prevProc;
     private bool _pressed, _moved;
     private POINT _cursorStart;
     private PointInt32 _winStart;
@@ -38,12 +47,15 @@ public sealed partial class FloatingButtonWindow : Window
             p.IsResizable = false; p.IsMaximizable = false; p.IsMinimizable = false;
         }
 
-        // Default spot: left, a little in from the edge, vertically centred.
+        // Lift the OS minimum tracking size so the window can be a true 52px, then size + place it.
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        _proc = HandleWndProc;
+        _prevProc = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, Marshal.GetFunctionPointerForDelegate(_proc));
+
         var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
         AppWindow.MoveAndResize(new RectInt32(work.X + 24, work.Y + (work.Height - Size) / 2, Size, Size));
 
         // Clip the window to the same hexagon the XAML draws (flat top/bottom, points at left/right).
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         int q = Size / 4, half = Size / 2;
         var hex = new POINT[]
         {
@@ -51,6 +63,18 @@ public sealed partial class FloatingButtonWindow : Window
             new() { X = Size - q, Y = Size }, new() { X = q, Y = Size }, new() { X = 0, Y = half },
         };
         SetWindowRgn(hwnd, CreatePolygonRgn(hex, hex.Length, 2 /*WINDING*/), true);
+    }
+
+    private IntPtr HandleWndProc(IntPtr h, uint msg, IntPtr w, IntPtr l)
+    {
+        if (msg == WM_GETMINMAXINFO)
+        {
+            var mmi = Marshal.PtrToStructure<MINMAXINFO>(l);
+            mmi.ptMinTrackSize.X = 2; mmi.ptMinTrackSize.Y = 2;
+            Marshal.StructureToPtr(mmi, l, false);
+            return IntPtr.Zero;
+        }
+        return CallWindowProcW(_prevProc, h, msg, w, l);
     }
 
     private void OnDown(object sender, PointerRoutedEventArgs e)
