@@ -1,5 +1,8 @@
 name: Release
 
+# CI-driven release: pushing a v* tag (or running this manually) builds every artifact and publishes
+# a GitHub Release. Produces the Companion as a standalone EXE, an MSI and an MSIX, plus the agent,
+# doctor and bootstrap tools.
 on:
   push:
     tags: ['v*']
@@ -27,17 +30,69 @@ jobs:
             8.0.x
             10.0.x
 
-      - name: Publish self-contained agent + doctor
+      - name: Derive version
+        id: ver
+        shell: pwsh
         run: |
-          dotnet publish src/Rdpeek.Agent  -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/agent
-          dotnet publish src/Rdpeek.Doctor -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/doctor
+          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ github.event.inputs.tag }}' } else { '${{ github.ref_name }}' }
+          $v = $tag -replace '^v',''
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "ver=$v"   >> $env:GITHUB_OUTPUT
+          "msix=$v.0" >> $env:GITHUB_OUTPUT
 
-      # The installer + its native shim (rdpeek-vc-shim.dll, built by the Bootstrap's MSBuild target).
-      # The shim must stay a loose DLL next to the exe, so the two ship together as a zip.
-      - name: Publish installer + shim
+      # ── Companion: standalone single-file EXE ───────────────────────────
+      - name: Publish Companion (standalone exe)
+        run: >
+          dotnet publish src/Rdpeek.Companion.WinUI -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=none -p:DebugSymbols=false -p:Version=${{ steps.ver.outputs.ver }}
+          -o publish/companion
+      - name: Name the standalone exe
+        shell: pwsh
+        run: Copy-Item publish/companion/Rdpeek.Companion.WinUI.exe publish/rdpeek-companion.exe
+
+      # ── Companion: MSI (WiX) ────────────────────────────────────────────
+      - name: Install WiX
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix
+          "$env:USERPROFILE\.dotnet\tools" >> $env:GITHUB_PATH
+      - name: Build MSI
+        run: wix build packaging/companion/Package.wxs -b pub=publish/companion -d Version=${{ steps.ver.outputs.ver }} -o publish/rdpeek-companion.msi
+
+      # ── Companion: MSIX (MakeAppx + self-signed cert) ───────────────────
+      - name: Build + sign MSIX
+        shell: pwsh
+        run: |
+          $ver = '${{ steps.ver.outputs.msix }}'
+          $layout = 'publish/msix-layout'
+          New-Item -ItemType Directory "$layout/Assets" -Force | Out-Null
+          Copy-Item publish/companion/Rdpeek.Companion.WinUI.exe $layout
+          Copy-Item packaging/companion/msix/Assets/* "$layout/Assets/"
+          (Get-Content packaging/companion/msix/AppxManifest.xml -Raw).Replace('$VERSION$', $ver) | Set-Content "$layout/AppxManifest.xml" -Encoding UTF8
+          $ma = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\makeappx.exe' | Sort-Object FullName | Select-Object -Last 1).FullName
+          $st = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' | Sort-Object FullName | Select-Object -Last 1).FullName
+          & $ma pack /d $layout /p publish/rdpeek-companion.msix /o
+          if ($LASTEXITCODE -ne 0) { throw "makeappx failed" }
+          # Self-signed cert whose subject matches the manifest Publisher (CN=Gus Catalano). Exported as
+          # .cer so users can trust it to install the MSIX (an unsigned/untrusted MSIX won't install).
+          $cert = New-SelfSignedCertificate -Type Custom -Subject 'CN=Gus Catalano' -KeyUsage DigitalSignature `
+            -CertStoreLocation 'Cert:\CurrentUser\My' -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3','2.5.29.19={text}')
+          $pw = ConvertTo-SecureString 'rdpeek' -Force -AsPlainText
+          Export-PfxCertificate -Cert $cert -FilePath cert.pfx -Password $pw | Out-Null
+          Export-Certificate -Cert $cert -FilePath publish/rdpeek-companion-msix.cer | Out-Null
+          & $st sign /fd SHA256 /f cert.pfx /p 'rdpeek' publish/rdpeek-companion.msix
+          if ($LASTEXITCODE -ne 0) { throw "signtool failed" }
+          Remove-Item "Cert:\CurrentUser\My\$($cert.Thumbprint)" -ErrorAction SilentlyContinue
+
+      # ── agent / doctor / bootstrap ──────────────────────────────────────
+      - name: Publish agent + doctor
+        run: |
+          dotnet publish src/Rdpeek.Agent  -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ steps.ver.outputs.ver }} -o publish/agent
+          dotnet publish src/Rdpeek.Doctor -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ steps.ver.outputs.ver }} -o publish/doctor
+      - name: Publish bootstrap (+ vc-shim)
         run: dotnet publish src/Rdpeek.Bootstrap -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/bootstrap
-
-      - name: Bundle installer (exe + shim) as a zip
+      - name: Bundle bootstrap (exe + shim) as a zip
         shell: pwsh
         run: Compress-Archive -Path publish/bootstrap/rdpeek-bootstrap.exe, publish/bootstrap/rdpeek-vc-shim.dll -DestinationPath publish/rdpeek-bootstrap-win-x64.zip -Force
 
@@ -46,9 +101,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ github.event.inputs.tag }}' } else { '${{ github.ref_name }}' }
-          gh release create $tag `
+          gh release create ${{ steps.ver.outputs.tag }} `
+            publish/rdpeek-companion.exe `
+            publish/rdpeek-companion.msi `
+            publish/rdpeek-companion.msix `
+            publish/rdpeek-companion-msix.cer `
             publish/agent/rdpeek-agent.exe `
             publish/doctor/rdpeek-doctor.exe `
             publish/rdpeek-bootstrap-win-x64.zip `
-            --title $tag --generate-notes
+            --title ${{ steps.ver.outputs.tag }} --generate-notes

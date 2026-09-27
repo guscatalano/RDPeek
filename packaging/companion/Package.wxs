@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MSI for the RDPeek Companion. Built by CI: publish the app to a folder, then
+     wix build packaging/companion/Package.wxs -b pub=<folder> -d Version=x.y.z -o rdpeek-companion.msi -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="RDPeek Companion"
+           Manufacturer="Gus Catalano"
+           Version="$(Version)"
+           UpgradeCode="446027c9-338a-4e33-adbb-44bf2d274b15"
+           Scope="perMachine">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of RDPeek Companion is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="RDPeek Companion">
+        <Files Include="!(bindpath.pub)\**" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut" Guid="5dadb154-b8ee-43d9-8635-c1a1ab7c9ae4">
+        <Shortcut Id="AppShortcut" Name="RDPeek Companion"
+                  Target="[INSTALLFOLDER]Rdpeek.Companion.WinUI.exe" WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="CleanupStartMenu" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\RDPeek\Companion" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+  </Package>
+</Wix>
