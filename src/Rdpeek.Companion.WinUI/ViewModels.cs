@@ -260,7 +260,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _windowControlEnabled;
     [ObservableProperty] private string _windowTarget = "No RDP window selected.";
     private readonly HotkeyListener _hotkeys;
-    [ObservableProperty] private bool _hotkeysEnabled;
+    [ObservableProperty] private bool _hotkeysEnabled = true;   // on by default
     private DispatcherQueueTimer? _cycleTimer;
     [ObservableProperty] private bool _autoCycle;               // rotate through sessions on a timer
     [ObservableProperty] private bool _showConnectionBar;       // toggle mstsc's own connection bar
@@ -305,6 +305,7 @@ public partial class MainViewModel : ObservableObject
         _hotkeys = new HotkeyListener();
         _hotkeys.Pressed += id => _dispatcher.TryEnqueue(
             () => CycleConnection(id == HotkeyListener.PrevId ? -1 : +1));
+        if (HotkeysEnabled) _hotkeys.Enable();   // default-on doesn't fire OnChanged, so enable here
 
         LoadRecent();
     }

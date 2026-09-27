@@ -40,7 +40,7 @@ public sealed partial class MainWindow : Window
 
         // System-tray icon: the primary way to drive the switcher without the dashboard open.
         _tray = new TrayIcon(
-            () => new TrayState(Vm.DockRight, Vm.AutoCycle, Vm.ShowConnectionBar, Vm.UseFloatingButton),
+            () => new TrayState(Vm.DockRight, Vm.AutoCycle, Vm.ShowConnectionBar, Vm.UseFloatingButton, Vm.HotkeysEnabled),
             id => DispatcherQueue.TryEnqueue(() => OnTrayCommand(id)));
 
         // Closing the dashboard hides it to the tray rather than quitting; Exit (tray) really quits.
@@ -150,6 +150,7 @@ public sealed partial class MainWindow : Window
             case TrayIcon.CmdAutoCycle: Vm.AutoCycle = !Vm.AutoCycle; break;
             case TrayIcon.CmdConnectionBar: Vm.ShowConnectionBar = !Vm.ShowConnectionBar; break;
             case TrayIcon.CmdFloating: Vm.UseFloatingButton = !Vm.UseFloatingButton; break;
+            case TrayIcon.CmdHotkeys: Vm.HotkeysEnabled = !Vm.HotkeysEnabled; break;
             case TrayIcon.CmdDashboard: AppWindow.Show(); Activate(); break;
             case TrayIcon.CmdExit:
                 _exiting = true;
