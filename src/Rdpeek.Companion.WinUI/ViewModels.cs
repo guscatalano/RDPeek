@@ -32,6 +32,7 @@ public partial class ConnectionRow : ObservableObject
     [ObservableProperty] private string _healthText = "";
     [ObservableProperty] private Brush _healthBrush = UiBrushes.Muted;
     [ObservableProperty] private Microsoft.UI.Xaml.Media.ImageSource? _thumbnail;   // last-seen preview
+    [ObservableProperty] private string _thumbnailSource = "";                      // where/when it came from
     public BrokerServer.AgentState? State { get; set; }
 }
 
@@ -790,7 +791,11 @@ public partial class MainViewModel : ObservableObject
         if (AgentThumbnails) return;   // the agent is the live source; don't fight it with client grabs
         var shot = await Task.Run(() => ScreenCapture.Capture(row.Hwnd, 240));
         if (shot is { } s)
-            _dispatcher.TryEnqueue(() => { try { row.Thumbnail = ScreenCapture.ToBitmap(s); } catch { } });
+            _dispatcher.TryEnqueue(() =>
+            {
+                try { row.Thumbnail = ScreenCapture.ToBitmap(s); row.ThumbnailSource = $"client · {DateTime.Now:HH:mm:ss}"; }
+                catch { }
+            });
     }
 
     // ── live agent-side thumbnails (optional) ──────────────────────────────
@@ -838,6 +843,8 @@ public partial class MainViewModel : ObservableObject
             ras.Seek(0);
             await bmp.SetSourceAsync(ras);
             row.Thumbnail = bmp;
+            string host = string.IsNullOrEmpty(row.Host) ? "agent" : row.Host;
+            row.ThumbnailSource = $"agent · {host} · {DateTime.Now:HH:mm:ss}";
         }
         catch { /* bad frame — skip */ }
     }

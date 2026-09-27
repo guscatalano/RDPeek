@@ -48,11 +48,18 @@
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:ConnectionRow">
                     <StackPanel Spacing="6" Padding="4,7">
-                        <!-- last-seen preview (appears once you've switched to the session) -->
-                        <Border CornerRadius="4" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                Visibility="{x:Bind local:Ui.VisibleIfSet(Thumbnail), Mode=OneWay}">
-                            <Image Source="{x:Bind Thumbnail, Mode=OneWay}" Stretch="Uniform" MaxHeight="122" />
-                        </Border>
+                        <!-- last-seen preview (appears once you've switched to the session); the caption
+                             says where it came from (agent vs client) and when -->
+                        <Grid Visibility="{x:Bind local:Ui.VisibleIfSet(Thumbnail), Mode=OneWay}">
+                            <Border CornerRadius="4" BorderThickness="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                                <Image Source="{x:Bind Thumbnail, Mode=OneWay}" Stretch="Uniform" MaxHeight="122" />
+                            </Border>
+                            <Border VerticalAlignment="Bottom" HorizontalAlignment="Stretch" Background="#B0000000"
+                                    CornerRadius="0,0,4,4" Padding="6,2">
+                                <TextBlock Text="{x:Bind ThumbnailSource, Mode=OneWay}" FontSize="10" Foreground="White"
+                                           TextTrimming="CharacterEllipsis" />
+                            </Border>
+                        </Grid>
                         <Grid ColumnSpacing="10">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
