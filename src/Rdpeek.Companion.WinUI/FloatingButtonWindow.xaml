@@ -6,9 +6,23 @@
 
     <Grid x:Name="Root" Background="Transparent"
           PointerPressed="OnDown" PointerMoved="OnMove" PointerReleased="OnUp">
-        <Ellipse Fill="{ThemeResource AccentFillColorDefaultBrush}" Stroke="{ThemeResource TextOnAccentFillColorPrimaryBrush}" StrokeThickness="0" />
-        <TextBlock Text="R" FontWeight="Bold" FontSize="22"
-                   Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+        <!-- dark neutral circle -->
+        <Ellipse Fill="#FF2B2F3A" />
+        <Ellipse Stroke="#33FFFFFF" StrokeThickness="1" />
+        <!-- 2x2 "switch windows" tiles, drawn as shapes so they're crisp at any DPI -->
+        <Grid Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Grid.RowDefinitions>
+                <RowDefinition />
+                <RowDefinition />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition />
+                <ColumnDefinition />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Row="0" Grid.Column="0" Margin="0,0,2.5,2.5" CornerRadius="2" Background="#FF5ED8C6" />
+            <Border Grid.Row="0" Grid.Column="1" Margin="2.5,0,0,2.5" CornerRadius="2" Background="#FF5ED8C6" />
+            <Border Grid.Row="1" Grid.Column="0" Margin="0,2.5,2.5,0" CornerRadius="2" Background="#FF5ED8C6" />
+            <Border Grid.Row="1" Grid.Column="1" Margin="2.5,2.5,0,0" CornerRadius="2" Background="#FF5ED8C6" />
+        </Grid>
     </Grid>
 </Window>
