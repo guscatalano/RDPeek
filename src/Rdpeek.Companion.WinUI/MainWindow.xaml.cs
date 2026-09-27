@@ -13,6 +13,7 @@ public sealed partial class MainWindow : Window
         Vm = new MainViewModel(DispatcherQueue);
         InitializeComponent();
         Title = "RDPeek Companion";
+        try { AppWindow.SetIcon(System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "rdpeek.ico")); } catch { }
 
         // Reveal the switcher (focused) when the cursor is shoved into the left edge (mid-screen). It
         // auto-hides on blur, so it must take focus to be dismissable that way. Poll-thread callback
@@ -81,6 +82,11 @@ public sealed partial class MainWindow : Window
     {
         if ((sender as FrameworkElement)?.DataContext is BreadcrumbRow b)
             Vm.NavigateCommand.Execute(b.FullPath);
+    }
+
+    private void OnRecentClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is RecentConnection r) Vm.LaunchRecentCommand.Execute(r);
     }
 
     private void OnShellInputKey(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)

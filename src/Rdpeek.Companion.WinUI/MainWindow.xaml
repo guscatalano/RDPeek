@@ -904,6 +904,29 @@
                                 </StackPanel>
                                 <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.7" Text="{x:Bind Vm.LaunchStatus, Mode=OneWay}" />
 
+                                <!-- Recent connections (Windows RDP MRU + .rdp files) — click to launch -->
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Recent connections" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" Content="Refresh" Command="{x:Bind Vm.RefreshRecentCommand}" />
+                                </Grid>
+                                <ListView ItemsSource="{x:Bind Vm.Recent}" IsItemClickEnabled="True" ItemClick="OnRecentClick"
+                                          SelectionMode="None" MaxHeight="170"
+                                          Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="local:RecentConnection">
+                                            <Grid ColumnSpacing="10" Padding="2,5">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <FontIcon Grid.Column="0" FontFamily="Segoe MDL2 Assets" Glyph="{x:Bind Glyph}" FontSize="14" VerticalAlignment="Center" />
+                                                <StackPanel Grid.Column="1" Spacing="1">
+                                                    <TextBlock Text="{x:Bind Display}" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{x:Bind Kind}" FontSize="11" Opacity="0.6" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+
                                 <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                                         CornerRadius="6" Padding="12,8">
                                     <TextBlock TextWrapping="Wrap" FontSize="12" Text="{x:Bind Vm.WindowTarget, Mode=OneWay}" />

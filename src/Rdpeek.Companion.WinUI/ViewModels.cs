@@ -35,6 +35,13 @@ public partial class ConnectionRow : ObservableObject
 
 public sealed record ProcRow(uint Pid, string Image, string User, string Mem);
 
+/// <summary>A previously-used RDP target: a host from Windows' RDP MRU, or a .rdp file on disk.</summary>
+public sealed record RecentConnection(string Display, string Target, bool IsFile)
+{
+    public string Glyph => IsFile ? "" : "";   // document : monitor
+    public string Kind => IsFile ? ".rdp file" : "recent host";
+}
+
 public sealed record ChannelRow(string Name, string Kind, string Activation, string Module, string Clsid);
 
 /// <summary>Cached brushes for state coloring, so records don't allocate one per row.</summary>
@@ -298,6 +305,8 @@ public partial class MainViewModel : ObservableObject
         _hotkeys = new HotkeyListener();
         _hotkeys.Pressed += id => _dispatcher.TryEnqueue(
             () => CycleConnection(id == HotkeyListener.PrevId ? -1 : +1));
+
+        LoadRecent();
     }
 
     partial void OnSelectedConnectionChanged(ConnectionRow? value)
@@ -754,6 +763,46 @@ public partial class MainViewModel : ObservableObject
         if (row is null) return;
         SelectedConnection = row;
         if (row.WindowPid > 0) SendWindow("fullscreen");   // bring forward + ensure fullscreen
+    }
+
+    // Recent connections: hosts from Windows' RDP MRU + any .rdp files in Documents/Desktop. Click to launch.
+    public ObservableCollection<RecentConnection> Recent { get; } = new();
+
+    public void LoadRecent()
+    {
+        Recent.Clear();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Terminal Server Client\Default");
+            if (k is not null)
+                foreach (var name in k.GetValueNames().Where(n => n.StartsWith("MRU", StringComparison.OrdinalIgnoreCase)).OrderBy(n => n))
+                    if (k.GetValue(name) is string host && host.Length > 0 && seen.Add(host))
+                        Recent.Add(new RecentConnection(host, host, false));
+        }
+        catch { /* no MRU */ }
+
+        foreach (var folder in new[] { Environment.SpecialFolder.MyDocuments, Environment.SpecialFolder.Desktop })
+            try
+            {
+                foreach (var f in System.IO.Directory.EnumerateFiles(Environment.GetFolderPath(folder), "*.rdp"))
+                    if (seen.Add(f)) Recent.Add(new RecentConnection(System.IO.Path.GetFileNameWithoutExtension(f), f, true));
+            }
+            catch { /* folder unavailable */ }
+    }
+
+    [RelayCommand] private void RefreshRecent() => LoadRecent();
+
+    [RelayCommand]
+    public void LaunchRecent(RecentConnection? r)
+    {
+        if (r is null) return;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("mstsc", LaunchArgs(r.Target)) { UseShellExecute = true });
+            LaunchStatus = $"Launched {r.Display}.";
+        }
+        catch (Exception ex) { LaunchStatus = $"Failed to launch {r.Display}: {ex.Message}"; }
     }
 
     // Launch RDP connections. Targets: one per line — a host, host:port, or a path to a .rdp file.
