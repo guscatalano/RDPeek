@@ -15,7 +15,7 @@ public readonly record struct TrayState(bool DockRight, bool AutoCycle, bool Con
 public sealed class TrayIcon : IDisposable
 {
     public const int CmdShowSwitcher = 1, CmdDockLeft = 2, CmdDockRight = 3,
-                     CmdAutoCycle = 4, CmdConnectionBar = 5, CmdDashboard = 6, CmdExit = 7;
+                     CmdAutoCycle = 4, CmdConnectionBar = 5, CmdDashboard = 6, CmdExit = 7, CmdLaunch = 8;
 
     private const int WM_TRAY = 0x8000 + 1;   // WM_APP + 1
     private const int WM_RBUTTONUP = 0x0205, WM_LBUTTONDBLCLK = 0x0203, WM_CONTEXTMENU = 0x007B, WM_NULL = 0;
@@ -122,6 +122,7 @@ public sealed class TrayIcon : IDisposable
         var s = _getState();
         var menu = CreatePopupMenu();
         AppendMenuW(menu, MF_STRING, CmdShowSwitcher, "Show switcher");
+        AppendMenuW(menu, MF_STRING, CmdLaunch, "Launch connections");
         AppendMenuW(menu, MF_SEPARATOR, 0, null);
         AppendMenuW(menu, MF_STRING | (s.DockRight ? 0 : MF_CHECKED), CmdDockLeft, "Dock left");
         AppendMenuW(menu, MF_STRING | (s.DockRight ? MF_CHECKED : 0), CmdDockRight, "Dock right");

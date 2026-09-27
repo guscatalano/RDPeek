@@ -99,6 +99,7 @@ public sealed partial class MainWindow : Window
         switch (id)
         {
             case TrayIcon.CmdShowSwitcher: ShowSwitcher(); break;
+            case TrayIcon.CmdLaunch: Vm.LaunchCommand.Execute(null); break;
             case TrayIcon.CmdDockLeft: Vm.DockRight = false; break;
             case TrayIcon.CmdDockRight: Vm.DockRight = true; break;
             case TrayIcon.CmdAutoCycle: Vm.AutoCycle = !Vm.AutoCycle; break;

@@ -755,6 +755,43 @@ public partial class MainViewModel : ObservableObject
         if (row.WindowPid > 0) SendWindow("fullscreen");   // bring forward + ensure fullscreen
     }
 
+    // Launch RDP connections. Targets: one per line — a host, host:port, or a path to a .rdp file.
+    [ObservableProperty] private string _launchTargets = "";
+    [ObservableProperty] private string _launchCount = "1";
+    [ObservableProperty] private bool _launchFullscreen = true;
+    [ObservableProperty] private string _launchStatus = "Enter targets (one per line), then Launch.";
+
+    /// <summary>Start one mstsc per target (times the copy count) — a one-click way to open several
+    /// sessions and populate the switcher.</summary>
+    [RelayCommand]
+    public void Launch()
+    {
+        int count = int.TryParse(LaunchCount, out var n) ? Math.Clamp(n, 1, 12) : 1;
+        var targets = LaunchTargets.Replace("\r", "").Split('\n')
+            .Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
+        if (targets.Count == 0) { LaunchStatus = "Enter at least one target (host, host:port, or a .rdp path)."; return; }
+
+        int launched = 0;
+        foreach (var target in targets)
+            for (int i = 0; i < count; i++)
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("mstsc", LaunchArgs(target)) { UseShellExecute = true });
+                    launched++;
+                }
+                catch (Exception ex) { LaunchStatus = $"Failed to launch {target}: {ex.Message}"; return; }
+            }
+        LaunchStatus = $"Launched {launched} connection(s) — accept each mstsc prompt to connect.";
+    }
+
+    private string LaunchArgs(string target)
+    {
+        bool isRdp = target.EndsWith(".rdp", StringComparison.OrdinalIgnoreCase) && System.IO.File.Exists(target);
+        string fs = LaunchFullscreen ? " /f" : "";
+        return isRdp ? $"\"{target}\"{fs}" : $"/v:{target}{fs}";
+    }
+
     /// <summary>Switch to the local machine's desktop by minimising every RDP session (each one restores
     /// to fullscreen when you switch back). Listed in the switcher alongside the remote sessions.</summary>
     [RelayCommand]

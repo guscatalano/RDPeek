@@ -889,6 +889,21 @@
                                 <TextBlock TextWrapping="Wrap" Opacity="0.8"
                                            Text="The out-of-process diagnostics plugin is crash-isolated but can't touch the mstsc window. This drives the tiny in-process Rdpeek.WindowPlugin, which mstsc loads into its own process. Each connection has its own control pipe, keyed by mstsc pid; commands go to the connection selected on the Overview tab." />
 
+                                <!-- Launch several sessions at once -->
+                                <TextBlock Text="Launch connections" FontWeight="SemiBold" />
+                                <TextBlock TextWrapping="Wrap" Opacity="0.8" FontSize="12"
+                                           Text="One target per line — a host, host:port, or a path to a .rdp file." />
+                                <TextBox Text="{x:Bind Vm.LaunchTargets, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AcceptsReturn="True" TextWrapping="Wrap" Height="72" FontFamily="Consolas"
+                                         PlaceholderText="127.0.0.1:33389&#x0a;server2.contoso.com" />
+                                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                    <TextBlock Text="Copies each:" VerticalAlignment="Center" />
+                                    <TextBox Width="52" Text="{x:Bind Vm.LaunchCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <ToggleSwitch IsOn="{x:Bind Vm.LaunchFullscreen, Mode=TwoWay}" OnContent="Fullscreen" OffContent="Windowed" />
+                                    <Button Content="Launch" Command="{x:Bind Vm.LaunchCommand}" Style="{ThemeResource AccentButtonStyle}" />
+                                </StackPanel>
+                                <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.7" Text="{x:Bind Vm.LaunchStatus, Mode=OneWay}" />
+
                                 <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                                         CornerRadius="6" Padding="12,8">
                                     <TextBlock TextWrapping="Wrap" FontSize="12" Text="{x:Bind Vm.WindowTarget, Mode=OneWay}" />
