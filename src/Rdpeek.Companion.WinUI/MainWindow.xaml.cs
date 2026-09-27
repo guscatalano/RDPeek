@@ -44,7 +44,7 @@ public sealed partial class MainWindow : Window
 
         // System-tray icon: the primary way to drive the switcher without the dashboard open.
         _tray = new TrayIcon(
-            () => new TrayState(Vm.DockRight, Vm.AutoCycle, Vm.ShowConnectionBar, Vm.UseFloatingButton, Vm.HotkeysEnabled),
+            () => new TrayState(Vm.DockRight, Vm.AutoCycle, Vm.ShowConnectionBar, Vm.UseFloatingButton, Vm.HotkeysEnabled, Vm.StartWithWindows),
             id => DispatcherQueue.TryEnqueue(() => OnTrayCommand(id)));
 
         // Closing the dashboard hides it to the tray rather than quitting; Exit (tray) really quits.
@@ -156,14 +156,29 @@ public sealed partial class MainWindow : Window
             case TrayIcon.CmdConnectionBar: Vm.ShowConnectionBar = !Vm.ShowConnectionBar; break;
             case TrayIcon.CmdFloating: Vm.UseFloatingButton = !Vm.UseFloatingButton; break;
             case TrayIcon.CmdHotkeys: Vm.HotkeysEnabled = !Vm.HotkeysEnabled; break;
+            case TrayIcon.CmdStartup: Vm.StartWithWindows = !Vm.StartWithWindows; break;
             case TrayIcon.CmdDashboard: AppWindow.Show(); Activate(); break;
-            case TrayIcon.CmdExit:
-                _exiting = true;
-                _tray.Dispose();
-                Application.Current.Exit();
-                break;
+            case TrayIcon.CmdExit: ExitApp(); break;
         }
     }
+
+    /// <summary>Really quit. WinUI's Application.Exit() can leave the process alive when background or
+    /// foreground threads (the broker server, the low-level keyboard hook) are still running, so we
+    /// tear down what we own and then force the process to exit.</summary>
+    private void ExitApp()
+    {
+        _exiting = true;
+        try { _tray.Dispose(); } catch { }
+        try { _switcher?.Close(); } catch { }
+        try { _handle?.Close(); _floating?.Close(); _fade?.Close(); } catch { }
+        try { _edge?.Dispose(); } catch { }
+        try { Vm.Shutdown(); } catch { }
+        try { Application.Current.Exit(); } catch { }
+        Environment.Exit(0);   // guarantee termination regardless of lingering threads
+    }
+
+    /// <summary>Start hidden to the tray (used when launched with --tray on logon).</summary>
+    public void HideToTray() { try { AppWindow.Hide(); } catch { } }
 
     /// <summary>The switcher is created once and shown/hidden (not closed), so the edge trigger and the
     /// Hide button drive the same instance. It shares this window's view model, so it lists the same

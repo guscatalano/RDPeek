@@ -98,6 +98,7 @@
                          VerticalAlignment="Center" />
                 <TextBlock Text="sec" VerticalAlignment="Center" Opacity="0.7" />
             </StackPanel>
+            <CheckBox Content="Start with Windows" IsChecked="{x:Bind Vm.StartWithWindows, Mode=TwoWay}" MinWidth="0" />
             <TextBlock FontSize="11" Opacity="0.55" TextWrapping="Wrap"
                        Text="Ctrl+Alt+← / → cycle. Hide it, then shove the cursor to the edge (mid-screen) to reveal." />
         </StackPanel>

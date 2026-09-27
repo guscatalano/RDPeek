@@ -201,6 +201,9 @@ public partial class MainViewModel : ObservableObject
     // Update check — empty notice unless a newer RDPeek is on GitHub Releases.
     [ObservableProperty] private string _updateNotice = "";
     [ObservableProperty] private Uri? _updateUri;
+    // Run the Companion on logon (HKCU Run key, starts hidden to the tray). Backed by the registry.
+    [ObservableProperty] private bool _startWithWindows = StartupManager.IsEnabled();
+    partial void OnStartWithWindowsChanged(bool value) => StartupManager.SetEnabled(value);
     private DriverAdvisories.BadDriverList? _badDrivers;
     private List<DriverAdvisoryRow> _clientDriverAdvisories = new();
     private List<DriverAdvisoryRow> _serverDriverAdvisories = new();
@@ -1454,6 +1457,15 @@ public partial class MainViewModel : ObservableObject
                 UpdateNotice = $"Update available: v{info.Latest}  (you have v{info.Current})";
                 UpdateUri = new Uri(info.Url);
             });
+    }
+
+    /// <summary>Best-effort teardown before the process exits: stop the timer and release the broker
+    /// pipe and the keyboard hook. The process is force-exited right after, so this is just tidy.</summary>
+    public void Shutdown()
+    {
+        try { _timer?.Stop(); } catch { }
+        try { _hotkeys?.Dispose(); } catch { }
+        try { _broker?.Dispose(); } catch { }
     }
 
     private void EvaluateServerDrivers(SystemDetail d)
