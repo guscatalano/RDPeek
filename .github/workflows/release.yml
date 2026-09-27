@@ -55,7 +55,8 @@ jobs:
       - name: Install WiX
         shell: pwsh
         run: |
-          dotnet tool install --global wix
+          # Pin to v5 — WiX v7 gates behind the Open Source Maintenance Fee EULA (WIX7015).
+          dotnet tool install --global wix --version 5.0.2
           "$env:USERPROFILE\.dotnet\tools" >> $env:GITHUB_PATH
       - name: Build MSI
         run: wix build packaging/companion/Package.wxs -b pub=publish/companion -d Version=${{ steps.ver.outputs.ver }} -o publish/rdpeek-companion.msi
