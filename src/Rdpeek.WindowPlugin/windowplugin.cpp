@@ -81,18 +81,35 @@ static std::wstring Widen(const std::string& s)
 }
 
 // ---- find the session window ---------------------------------------------------------------------
+// classic mstsc hosts the session in a stable "TscShellContainerClass" window; the modern client
+// (msrdc — the Windows Desktop / AVD client) is WinUI-based with no stable session class. Since this
+// plugin is loaded IN the client process, we first look for the mstsc class and, failing that, fall
+// back to the largest visible titled top-level window of this process (the session, not its chrome).
+static bool IsChromeClass(const wchar_t* cls)
+{
+    return wcscmp(cls, L"BBarWindowClass") == 0
+        || wcscmp(cls, L"TscConnBarWndClass") == 0
+        || wcscmp(cls, kOverlayClass) == 0
+        || wcscmp(cls, L"#32770") == 0;   // dialogs (credentials, "connecting…")
+}
+
 static HWND FindMstscWindow()
 {
-    struct Ctx { DWORD pid; HWND found; } ctx{ GetCurrentProcessId(), nullptr };
+    struct Ctx { DWORD pid; HWND exact; HWND best; long bestArea; } ctx{ GetCurrentProcessId(), nullptr, nullptr, 0 };
     EnumWindows([](HWND h, LPARAM lp) -> BOOL {
         auto* c = reinterpret_cast<Ctx*>(lp);
         DWORD pid = 0; GetWindowThreadProcessId(h, &pid);
         if (pid != c->pid || !IsWindowVisible(h)) return TRUE;
         wchar_t cls[128] = {}; GetClassNameW(h, cls, 128);
-        if (wcscmp(cls, kMstscClass) == 0) { c->found = h; return FALSE; }
+        if (wcscmp(cls, kMstscClass) == 0) { c->exact = h; return FALSE; }   // mstsc: done
+        if (IsChromeClass(cls)) return TRUE;
+        if (GetWindowTextLengthW(h) == 0) return TRUE;                        // untitled = not the session
+        RECT r{}; if (!GetWindowRect(h, &r)) return TRUE;
+        long area = (long)(r.right - r.left) * (r.bottom - r.top);
+        if (area > c->bestArea) { c->bestArea = area; c->best = h; }          // msrdc: largest wins
         return TRUE;
     }, reinterpret_cast<LPARAM>(&ctx));
-    return ctx.found;
+    return ctx.exact ? ctx.exact : ctx.best;
 }
 
 // mstsc's fullscreen connection bar ("BBar") lives in the same process as a sibling window.
