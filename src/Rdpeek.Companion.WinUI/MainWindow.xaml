@@ -42,6 +42,7 @@
                              IsSettingsVisible="False"
                              SelectionChanged="OnNavChanged">
             <muxc:NavigationView.MenuItems>
+                <muxc:NavigationViewItem Content="Connect" Tag="connect" />
                 <muxc:NavigationViewItemHeader Content="DVC workbench" />
                 <muxc:NavigationViewItem Content="Overview" Tag="dash" IsSelected="True" />
                 <muxc:NavigationViewItem Content="Channels" Tag="chan" />
@@ -62,6 +63,58 @@
             </muxc:NavigationView.MenuItems>
 
             <Grid Margin="0,12,0,0">
+                <!-- ===================== CONNECT ===================== -->
+                <Grid x:Name="ConnectView" Visibility="Collapsed">
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel Margin="16" Spacing="14">
+                                <TextBlock Text="Connect" FontSize="18" FontWeight="SemiBold" />
+
+                                <!-- Recent connections (Windows RDP MRU + .rdp files) — click to launch -->
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Recent connections" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" Content="Refresh" Command="{x:Bind Vm.RefreshRecentCommand}" />
+                                </Grid>
+                                <TextBlock TextWrapping="Wrap" Opacity="0.8" FontSize="12"
+                                           Text="Hosts you've connected to before (Windows RDP history) and .rdp files in Documents/Desktop. Click one to launch it." />
+                                <ListView ItemsSource="{x:Bind Vm.Recent}" IsItemClickEnabled="True" ItemClick="OnRecentClick"
+                                          SelectionMode="None" MaxHeight="260"
+                                          Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="local:RecentConnection">
+                                            <Grid ColumnSpacing="10" Padding="2,5">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <FontIcon Grid.Column="0" FontFamily="Segoe MDL2 Assets" Glyph="{x:Bind Glyph}" FontSize="14" VerticalAlignment="Center" />
+                                                <StackPanel Grid.Column="1" Spacing="1">
+                                                    <TextBlock Text="{x:Bind Display}" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{x:Bind Kind}" FontSize="11" Opacity="0.6" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+
+                                <!-- Launch several sessions at once -->
+                                <TextBlock Text="Launch new" FontWeight="SemiBold" Margin="0,6,0,0" />
+                                <TextBlock TextWrapping="Wrap" Opacity="0.8" FontSize="12"
+                                           Text="One target per line — a host, host:port, or a path to a .rdp file." />
+                                <TextBox Text="{x:Bind Vm.LaunchTargets, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AcceptsReturn="True" TextWrapping="Wrap" Height="72" FontFamily="Consolas"
+                                         PlaceholderText="127.0.0.1:33389&#x0a;server2.contoso.com" />
+                                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                    <TextBlock Text="Copies each:" VerticalAlignment="Center" />
+                                    <TextBox Width="52" Text="{x:Bind Vm.LaunchCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <ToggleSwitch IsOn="{x:Bind Vm.LaunchFullscreen, Mode=TwoWay}" OnContent="Fullscreen" OffContent="Windowed" />
+                                    <Button Content="Launch" Command="{x:Bind Vm.LaunchCommand}" Style="{ThemeResource AccentButtonStyle}" />
+                                </StackPanel>
+                                <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.7" Text="{x:Bind Vm.LaunchStatus, Mode=OneWay}" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+
                 <!-- ===================== DASHBOARD ===================== -->
                 <Grid x:Name="DashView" RowSpacing="10">
                     <Grid.RowDefinitions>
@@ -888,44 +941,6 @@
                                 <TextBlock Text="mstsc window control" FontSize="18" FontWeight="SemiBold" />
                                 <TextBlock TextWrapping="Wrap" Opacity="0.8"
                                            Text="The out-of-process diagnostics plugin is crash-isolated but can't touch the mstsc window. This drives the tiny in-process Rdpeek.WindowPlugin, which mstsc loads into its own process. Each connection has its own control pipe, keyed by mstsc pid; commands go to the connection selected on the Overview tab." />
-
-                                <!-- Launch several sessions at once -->
-                                <TextBlock Text="Launch connections" FontWeight="SemiBold" />
-                                <TextBlock TextWrapping="Wrap" Opacity="0.8" FontSize="12"
-                                           Text="One target per line — a host, host:port, or a path to a .rdp file." />
-                                <TextBox Text="{x:Bind Vm.LaunchTargets, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         AcceptsReturn="True" TextWrapping="Wrap" Height="72" FontFamily="Consolas"
-                                         PlaceholderText="127.0.0.1:33389&#x0a;server2.contoso.com" />
-                                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                                    <TextBlock Text="Copies each:" VerticalAlignment="Center" />
-                                    <TextBox Width="52" Text="{x:Bind Vm.LaunchCount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <ToggleSwitch IsOn="{x:Bind Vm.LaunchFullscreen, Mode=TwoWay}" OnContent="Fullscreen" OffContent="Windowed" />
-                                    <Button Content="Launch" Command="{x:Bind Vm.LaunchCommand}" Style="{ThemeResource AccentButtonStyle}" />
-                                </StackPanel>
-                                <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.7" Text="{x:Bind Vm.LaunchStatus, Mode=OneWay}" />
-
-                                <!-- Recent connections (Windows RDP MRU + .rdp files) — click to launch -->
-                                <Grid ColumnSpacing="10">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Recent connections" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                    <Button Grid.Column="1" Content="Refresh" Command="{x:Bind Vm.RefreshRecentCommand}" />
-                                </Grid>
-                                <ListView ItemsSource="{x:Bind Vm.Recent}" IsItemClickEnabled="True" ItemClick="OnRecentClick"
-                                          SelectionMode="None" MaxHeight="170"
-                                          Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="6">
-                                    <ListView.ItemTemplate>
-                                        <DataTemplate x:DataType="local:RecentConnection">
-                                            <Grid ColumnSpacing="10" Padding="2,5">
-                                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                                <FontIcon Grid.Column="0" FontFamily="Segoe MDL2 Assets" Glyph="{x:Bind Glyph}" FontSize="14" VerticalAlignment="Center" />
-                                                <StackPanel Grid.Column="1" Spacing="1">
-                                                    <TextBlock Text="{x:Bind Display}" TextTrimming="CharacterEllipsis" />
-                                                    <TextBlock Text="{x:Bind Kind}" FontSize="11" Opacity="0.6" />
-                                                </StackPanel>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ListView.ItemTemplate>
-                                </ListView>
 
                                 <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                                         CornerRadius="6" Padding="12,8">

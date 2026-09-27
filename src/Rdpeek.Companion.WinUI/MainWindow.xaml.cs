@@ -50,6 +50,7 @@ public sealed partial class MainWindow : Window
     private void OnNavChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         var tag = (args.SelectedItem as NavigationViewItem)?.Tag as string ?? "dash";
+        ConnectView.Visibility = tag == "connect" ? Visibility.Visible : Visibility.Collapsed;
         DashView.Visibility = tag == "dash" ? Visibility.Visible : Visibility.Collapsed;
         NetView.Visibility = tag == "net" ? Visibility.Visible : Visibility.Collapsed;
         SessView.Visibility = tag == "sess" ? Visibility.Visible : Visibility.Collapsed;
