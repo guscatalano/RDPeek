@@ -1321,7 +1321,11 @@ public partial class MainViewModel : ObservableObject
     private static BrokerServer.AgentState? Correlate(RdpWindow w, int windowCount, IReadOnlyList<BrokerServer.AgentState> states, out string agentText)
     {
         var connected = states.Where(s => s.Status == "connected").ToList();
-        var byHost = connected.FirstOrDefault(s => !string.IsNullOrEmpty(s.Host) && s.Host.Equals(w.Host, StringComparison.OrdinalIgnoreCase));
+        // Match agent↔window by host. Loose on purpose: the window title carries whatever you typed to
+        // connect (often an FQDN or different case) while the agent reports its computer name, so compare
+        // normalized short names. Without this, two simultaneous sessions both fail exact-match and show
+        // "no agent" (a single session still works via the count==1 shortcut below).
+        var byHost = connected.FirstOrDefault(s => HostsMatch(s.Host, w.Host));
         if (byHost is not null) { agentText = $"✓ {byHost.Host}"; return byHost; }
         if (windowCount == 1 && connected.Count == 1)
         {
@@ -1329,8 +1333,23 @@ public partial class MainViewModel : ObservableObject
             return connected[0];
         }
         int awaiting = states.Count(s => s.Status == "listening");
-        agentText = (windowCount == 1 && connected.Count == 0 && awaiting > 0) ? "⚠ no agent" : "—";
+        agentText = (connected.Count == 0 && awaiting > 0) ? "⚠ no agent" : "—";
         return null;
+    }
+
+    /// <summary>Do two host strings refer to the same machine? Case-insensitive on the short name
+    /// (DNS domain stripped), so "SERVER01", "server01" and "server01.corp.local" all match. Returns
+    /// false for empty strings or an IP-vs-name pair we can't reconcile.</summary>
+    private static bool HostsMatch(string? a, string? b)
+    {
+        static string Short(string? h)
+        {
+            h = (h ?? "").Trim().ToLowerInvariant();
+            int dot = h.IndexOf('.');
+            return dot > 0 ? h[..dot] : h;
+        }
+        var na = Short(a); var nb = Short(b);
+        return na.Length > 0 && nb.Length > 0 && na == nb;
     }
 
     private void UpdateDetails()

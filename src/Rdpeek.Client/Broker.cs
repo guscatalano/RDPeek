@@ -64,22 +64,25 @@ public static class Broker
     {
         try
         {
-            // Caps are sent once at connect; remember them so they're replayed to a companion that
-            // (re)connects later — otherwise it never learns this agent's capabilities (shell/screenshot).
-            if (line.StartsWith("caps|", StringComparison.Ordinal)) _lastCaps = line;
+            // Caps are sent once at connect; remember them (per connection seq) so they're replayed to a
+            // companion that (re)connects later — otherwise it never learns this agent's capabilities.
+            if (line.StartsWith("caps|", StringComparison.Ordinal) && Parse(line) is { } c) _lastCaps[c.seq] = line;
             EnsureSenderStarted();
             Queue.Writer.TryWrite(line);
         }
         catch { }
     }
 
-    private static volatile string? _lastCaps;
+    // One plugin process serves EVERY RDP session on this client (REGCLS_MULTIPLEUSE), so status and
+    // caps are cached PER connection seq — otherwise a second session would clobber the first's cache
+    // and only one would re-announce on reconnect/heartbeat, making the other look "gone".
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, string> _lastCaps = new();
 
     /// <summary>
-    /// Latest connection-status line, replayed whenever the pipe is (re)established so a
-    /// companion started after the RDP connection still sees the right state.
+    /// Latest connection-status line per seq, replayed whenever the pipe is (re)established so a
+    /// companion started after the RDP connection still sees the right state for every session.
     /// </summary>
-    private static volatile string? _lastStatus;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, string> _lastStatus = new();
 
     public static string Format(string kind, int pid, int seq, string payload = "")
         => $"{kind}|{pid}|{seq}|{payload}";
@@ -103,7 +106,8 @@ public static class Broker
         try
         {
             string line = Format(ev, pid, seq, host);
-            if (IsStatus(ev)) _lastStatus = line;
+            if (ev == "gone") { _lastStatus.TryRemove(seq, out _); _lastCaps.TryRemove(seq, out _); }
+            else if (IsStatus(ev)) _lastStatus[seq] = line;
 
             EnsureSenderStarted();
             Queue.Writer.TryWrite(line); // bounded + DropOldest, so this cannot block
@@ -157,18 +161,12 @@ public static class Broker
                     {
                         retryMs = MinRetryMs;
 
-                        // Re-announce state + capabilities to a companion that missed the originals
-                        // (e.g. it was started/relaunched after this RDP session connected).
-                        var status = _lastStatus;
-                        if (status is not null && !TryWrite(writer, status))
-                        {
-                            Disconnect(ref pipe, ref writer);
-                        }
-                        var caps = _lastCaps;
-                        if (writer is not null && caps is not null && !TryWrite(writer, caps))
-                        {
-                            Disconnect(ref pipe, ref writer);
-                        }
+                        // Re-announce state + capabilities for EVERY connection to a companion that
+                        // missed the originals (e.g. it was started/relaunched after RDP connected).
+                        foreach (var status in _lastStatus.Values)
+                            if (writer is not null && !TryWrite(writer, status)) Disconnect(ref pipe, ref writer);
+                        foreach (var caps in _lastCaps.Values)
+                            if (writer is not null && !TryWrite(writer, caps)) Disconnect(ref pipe, ref writer);
                     }
                     else
                     {
@@ -188,12 +186,11 @@ public static class Broker
                     }
                 }
 
-                // Idle heartbeat: re-announce status. A failed write reveals a companion that went
-                // away (or was relaunched), so we drop the dead pipe and reconnect next iteration.
-                if (idleWake && writer is not null && _lastStatus is { } status2 && !TryWrite(writer, status2))
-                {
-                    Disconnect(ref pipe, ref writer);
-                }
+                // Idle heartbeat: re-announce every connection's status. A failed write reveals a
+                // companion that went away (or was relaunched), so we drop the pipe and reconnect.
+                if (idleWake && writer is not null)
+                    foreach (var status2 in _lastStatus.Values)
+                        if (writer is not null && !TryWrite(writer, status2)) Disconnect(ref pipe, ref writer);
             }
             catch
             {
