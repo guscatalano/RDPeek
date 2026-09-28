@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using Microsoft.Win32.SafeHandles;
 using static Rdpeek.AgentService.NativeMethods;
@@ -6,18 +8,25 @@ using static Rdpeek.AgentService.NativeMethods;
 namespace Rdpeek.AgentService;
 
 /// <summary>
-/// The P/Invoke half of the supervisor: it enumerates interactive user sessions and
-/// launches <c>rdpeek-agent.exe serve</c> INTO a given session as that session's user.
+/// Launches <c>rdpeek-agent.exe serve</c> INTO an interactive user session on behalf of the
+/// session-0 supervisor service — via the <b>Task Scheduler</b>, not CreateProcessAsUser.
 ///
-/// Remember the session-0 constraint (see NativeMethods): the service is in session 0
-/// and cannot open the DVC itself, so everything here is about getting the agent to run
-/// in the *user's* session, where WTSVirtualChannelOpenEx(WTS_CURRENT_SESSION, ...) can
-/// actually find the channel.
+/// Why Task Scheduler: anything a session-0 service creates directly in another session dies
+/// at desktop-attach (0xC0000142). Task Scheduler is the supported mechanism that places the
+/// process in the user's session WITH its interactive desktop, so the agent's systray works.
+/// We register a tiny on-demand <c>InteractiveToken</c> task per session (no stored password),
+/// run it, then locate and monitor the resulting agent process so the supervisor can relaunch
+/// it on exit. The task is deleted when the session goes away or the service stops.
 /// </summary>
 internal static class SessionLauncher
 {
     /// <summary>An interactive user session that is a candidate for an agent.</summary>
     internal readonly record struct SessionInfo(uint SessionId, string WinStation, NativeMethods.WTS_CONNECTSTATE_CLASS State);
+
+    private const string TaskFolder = "RDPeek";
+
+    /// <summary>Deterministic task name for a session, e.g. <c>RDPeek\Agent-S1</c>.</summary>
+    internal static string TaskNameFor(uint sessionId) => $@"{TaskFolder}\Agent-S{sessionId}";
 
     /// <summary>
     /// Enumerate all sessions and return the *active* user sessions (RDP or console).
@@ -38,7 +47,6 @@ internal static class SessionLauncher
                 var infoPtr = ppInfo + (i * size);
                 var info = Marshal.PtrToStructure<WTS_SESSION_INFO>(infoPtr);
 
-                // Skip session 0 (services) and anything that isn't a connected user session.
                 if (info.SessionId == 0) continue;
                 if (info.State != WTS_CONNECTSTATE_CLASS.WTSActive) continue;
 
@@ -54,103 +62,171 @@ internal static class SessionLauncher
     }
 
     /// <summary>
-    /// Launch <c>rdpeek-agent.exe serve</c> in <paramref name="sessionId"/> as the logged-on
-    /// user. Returns a <see cref="LaunchedAgent"/> whose <see cref="LaunchedAgent.ExitTask"/>
-    /// completes when the agent process exits. Throws on any P/Invoke failure.
+    /// Register + run an on-demand scheduled task that starts <c>rdpeek-agent serve</c> as the
+    /// logged-on user of <paramref name="sessionId"/>, then find and wrap the agent process so
+    /// its exit can be watched. Throws if the session has no resolvable user, if schtasks fails,
+    /// or if the agent process never appears.
     /// </summary>
     public static LaunchedAgent Launch(uint sessionId, string agentExePath)
     {
-        // 1) Get the primary token of the user in that session. Fails for sessions with no
-        //    interactive user — the caller only passes WTSActive sessions, so this normally
-        //    succeeds, but a session can log off between enumeration and here.
-        if (!WTSQueryUserToken(sessionId, out SafeAccessTokenHandle userToken))
-            throw new InvalidOperationException(
-                $"WTSQueryUserToken failed for session {sessionId} (Win32 {Marshal.GetLastWin32Error()}). " +
-                "The service must run as LocalSystem (SeTcbPrivilege).");
+        string user = ResolveSessionUser(sessionId)
+            ?? throw new InvalidOperationException($"Could not resolve the logged-on user for session {sessionId}.");
 
-        using (userToken)
+        string taskName = TaskNameFor(sessionId);
+        string workingDir = Path.GetDirectoryName(agentExePath) ?? Environment.SystemDirectory;
+
+        // Register (overwrite) the task from an XML definition. XML avoids schtasks /TR quoting
+        // pitfalls and lets us request LogonType=InteractiveToken (runs in the user's session,
+        // no stored password) — the whole point of going through Task Scheduler.
+        string xml = BuildTaskXml(user, agentExePath, workingDir);
+        string xmlPath = Path.Combine(Path.GetTempPath(), $"rdpeek-agent-task-{sessionId}.xml");
+        // schtasks wants a Unicode file.
+        File.WriteAllText(xmlPath, xml, new UnicodeEncoding(bigEndian: false, byteOrderMark: true));
+        try
         {
-            // 2) Build the user's environment block so the agent sees the user's env
-            //    (LOCALAPPDATA, PATH, ...), not session 0's.
-            if (!CreateEnvironmentBlock(out IntPtr envBlock, userToken, false))
+            var create = RunSchtasks("/Create", "/F", "/TN", taskName, "/XML", xmlPath);
+            if (create.ExitCode != 0)
                 throw new InvalidOperationException(
-                    $"CreateEnvironmentBlock failed for session {sessionId} (Win32 {Marshal.GetLastWin32Error()}).");
+                    $"schtasks /Create failed for session {sessionId} (exit {create.ExitCode}): {create.Output.Trim()}");
+        }
+        finally
+        {
+            try { File.Delete(xmlPath); } catch { /* best effort */ }
+        }
 
-            try
+        var launchUtc = DateTime.UtcNow;
+        var run = RunSchtasks("/Run", "/TN", taskName);
+        if (run.ExitCode != 0)
+            throw new InvalidOperationException(
+                $"schtasks /Run failed for session {sessionId} (exit {run.ExitCode}): {run.Output.Trim()}");
+
+        // The task engine starts the process asynchronously; poll briefly for it in the target session.
+        var (pid, hProcess) = FindAgentProcess(sessionId, launchUtc.AddSeconds(-2), TimeSpan.FromSeconds(12))
+            ?? throw new InvalidOperationException(
+                $"Agent task ran for session {sessionId} but no rdpeek-agent process appeared. " +
+                "Check the task's LastTaskResult and that the user is interactively logged on.");
+
+        return new LaunchedAgent(sessionId, pid, hProcess);
+    }
+
+    /// <summary>Delete the per-session task (best effort). Called on logoff / service stop.</summary>
+    public static void RemoveTask(uint sessionId)
+    {
+        try { RunSchtasks("/Delete", "/F", "/TN", TaskNameFor(sessionId)); } catch { /* best effort */ }
+    }
+
+    /// <summary>domain\user (or .\user) for the session, or null if none is logged on.</summary>
+    private static string? ResolveSessionUser(uint sessionId)
+    {
+        string? user = QuerySessionString(sessionId, WTS_INFO_CLASS.WTSUserName);
+        if (string.IsNullOrEmpty(user)) return null;
+        string? domain = QuerySessionString(sessionId, WTS_INFO_CLASS.WTSDomainName);
+        return string.IsNullOrEmpty(domain) ? user : $@"{domain}\{user}";
+    }
+
+    /// <summary>Find the newest rdpeek-agent process in the session started at/after <paramref name="notBefore"/>.</summary>
+    private static (int pid, IntPtr hProcess)? FindAgentProcess(uint sessionId, DateTime notBefore, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (true)
+        {
+            Process? best = null;
+            foreach (var p in Process.GetProcessesByName("rdpeek-agent"))
             {
-                // The agent is a console app; a service has no console, so hand it valid std handles
-                // (the NUL sink). Without them the child's stdio is invalid and its startup aborts in
-                // ~0s (verified on a live box: with valid handles it serves fine, without it exits 0x0).
-                var sa = new SECURITY_ATTRIBUTES { nLength = Marshal.SizeOf<SECURITY_ATTRIBUTES>(), bInheritHandle = true };
-                IntPtr hNul = CreateFileW("NUL", GENERIC_WRITE, FILE_SHARE_READ_WRITE, ref sa, OPEN_EXISTING, 0, IntPtr.Zero);
-                bool haveNul = hNul != IntPtr.Zero && hNul != new IntPtr(-1);
-
-                var si = new STARTUPINFO
-                {
-                    cb = Marshal.SizeOf<STARTUPINFO>(),
-                    // MUST be the interactive desktop, or CreateProcessAsUser fails / the
-                    // process has no desktop.
-                    lpDesktop = @"winsta0\default",
-                    // Give the child valid stdout/stderr (NUL). stdin stays null on purpose: NUL is opened
-                    // write-only, and a write-only handle as stdin breaks console startup (verified — with
-                    // stdin=0 + valid stdout/stderr the agent serves; with stdin=NUL-write it exits 0s).
-                    dwFlags = haveNul ? (int)STARTF_USESTDHANDLES : 0,
-                    hStdInput = IntPtr.Zero,
-                    hStdOutput = haveNul ? hNul : IntPtr.Zero,
-                    hStdError = haveNul ? hNul : IntPtr.Zero,
-                };
-
-                // Quote the exe path (it may contain spaces) and append the subcommand.
-                string cmdLine = $"\"{agentExePath}\" serve";
-
-                // CREATE_UNICODE_ENVIRONMENT is required because CreateEnvironmentBlock
-                // returns a Unicode block. CREATE_NO_WINDOW keeps the console agent headless.
-                uint flags = CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW;
-
-                string workingDir = Path.GetDirectoryName(agentExePath) ?? Environment.SystemDirectory;
-
-                PROCESS_INFORMATION pi;
-                bool ok;
                 try
                 {
-                    ok = CreateProcessAsUserW(
-                        userToken,
-                        null,               // lpApplicationName — taken from lpCommandLine's first token
-                        cmdLine,
-                        IntPtr.Zero,
-                        IntPtr.Zero,
-                        haveNul,            // inherit handles only when we're passing the NUL std handles
-                        flags,
-                        envBlock,
-                        workingDir,
-                        ref si,
-                        out pi);
+                    if ((uint)p.SessionId != sessionId) { p.Dispose(); continue; }
+                    if (p.StartTime.ToUniversalTime() < notBefore) { p.Dispose(); continue; }
+                    if (best is null || p.StartTime > best.StartTime) { best?.Dispose(); best = p; }
+                    else p.Dispose();
                 }
-                finally
-                {
-                    // The child has its own reference to NUL now; drop ours.
-                    if (haveNul) CloseHandle(hNul);
-                }
-
-                if (!ok)
-                    throw new InvalidOperationException(
-                        $"CreateProcessAsUser failed for session {sessionId} (Win32 {Marshal.GetLastWin32Error()}).");
-
-                // We keep hProcess (for wait + terminate); the thread handle is not needed.
-                CloseHandle(pi.hThread);
-                return new LaunchedAgent(sessionId, pi.dwProcessId, pi.hProcess);
+                catch { try { p.Dispose(); } catch { } }
             }
-            finally
+
+            if (best is not null)
             {
-                DestroyEnvironmentBlock(envBlock);
+                int pid = best.Id;
+                best.Dispose();
+                // Reopen with exactly the rights we need (wait, query exit, terminate).
+                IntPtr h = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE, false, (uint)pid);
+                if (h != IntPtr.Zero) return (pid, h);
+                // Raced with exit; keep trying until the deadline.
             }
+
+            if (DateTime.UtcNow >= deadline) return null;
+            Thread.Sleep(250);
         }
+    }
+
+    private static string BuildTaskXml(string userId, string command, string workingDir)
+    {
+        // Task Scheduler 1.2 schema. InteractiveToken => runs in the user's session (their desktop),
+        // no stored credentials. ExecutionTimeLimit PT0S = run indefinitely. AllowStartOnDemand so /Run works.
+        string esc(string s) => System.Security.SecurityElement.Escape(s) ?? s;
+        return
+$@"<?xml version=""1.0"" encoding=""UTF-16""?>
+<Task version=""1.2"" xmlns=""http://schemas.microsoft.com/windows/2004/02/mit/task"">
+  <RegistrationInfo>
+    <Description>RDPeek in-session diagnostics agent (managed by RdpeekAgentSvc).</Description>
+    <Author>RdpeekAgentSvc</Author>
+  </RegistrationInfo>
+  <Principals>
+    <Principal id=""Author"">
+      <UserId>{esc(userId)}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>false</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context=""Author"">
+    <Exec>
+      <Command>{esc(command)}</Command>
+      <Arguments>serve</Arguments>
+      <WorkingDirectory>{esc(workingDir)}</WorkingDirectory>
+    </Exec>
+  </Actions>
+  <Triggers />
+</Task>";
+    }
+
+    private readonly record struct SchtasksResult(int ExitCode, string Output);
+
+    private static SchtasksResult RunSchtasks(params string[] args)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = "schtasks.exe",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (var a in args) psi.ArgumentList.Add(a);
+
+        using var proc = Process.Start(psi)
+            ?? throw new InvalidOperationException("Could not start schtasks.exe.");
+        string stdout = proc.StandardOutput.ReadToEnd();
+        string stderr = proc.StandardError.ReadToEnd();
+        proc.WaitForExit(30_000);
+        return new SchtasksResult(proc.HasExited ? proc.ExitCode : -1, stdout + stderr);
     }
 }
 
 /// <summary>
-/// Handle to an agent the service spawned into a session. Owns the process handle,
-/// exposes a Task that completes on exit, and can terminate the process on service stop.
+/// Handle to the agent the service started in a session (via a scheduled task). Owns a process
+/// handle for waiting/terminating, exposes a Task that completes on exit, and captures the exit code.
 /// </summary>
 internal sealed class LaunchedAgent : IDisposable
 {
@@ -164,6 +240,9 @@ internal sealed class LaunchedAgent : IDisposable
     public int ProcessId { get; }
     public DateTime StartedUtc { get; } = DateTime.UtcNow;
 
+    /// <summary>The process exit code, captured when it exits (null while still running).</summary>
+    public uint? ExitCode { get; private set; }
+
     /// <summary>Completes when the agent process exits (or when the handle is disposed).</summary>
     public Task ExitTask => _exited.Task;
 
@@ -173,21 +252,23 @@ internal sealed class LaunchedAgent : IDisposable
         ProcessId = processId;
         _hProcess = hProcess;
 
-        // Wrap the process handle in a waitable so the thread pool signals us on exit
-        // without a dedicated blocking thread per agent.
         _exitEvent = new ManualResetEvent(false)
         {
             SafeWaitHandle = new SafeWaitHandle(hProcess, ownsHandle: false),
         };
         _registration = ThreadPool.RegisterWaitForSingleObject(
             _exitEvent,
-            (_, _) => _exited.TrySetResult(),
+            (_, _) =>
+            {
+                if (NativeMethods.GetExitCodeProcess(_hProcess, out uint code)) ExitCode = code;
+                _exited.TrySetResult();
+            },
             state: null,
             millisecondsTimeOutInterval: Timeout.Infinite,
             executeOnlyOnce: true);
     }
 
-    /// <summary>Forcibly terminate the agent (used on service stop).</summary>
+    /// <summary>Forcibly terminate the agent (used on service stop / session logoff).</summary>
     public void Terminate()
     {
         try { TerminateProcess(_hProcess, 0); } catch { /* already gone */ }

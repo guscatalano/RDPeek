@@ -9,8 +9,9 @@ using Rdpeek.AgentService;
 //
 //  KEY CONSTRAINT: this process runs in **session 0**, which has no interactive RDP DVC.
 //  It therefore never opens the channel itself — it launches rdpeek-agent.exe INTO each
-//  active user session (CreateProcessAsUser) and supervises those processes. See
-//  NativeMethods.cs / SessionLauncher.cs for the full rationale.
+//  active user session via a per-session scheduled task (Task Scheduler places it on the
+//  user's interactive desktop, so the systray works — a direct CreateProcessAsUser spawn
+//  dies at desktop-attach) and supervises those processes. See SessionLauncher.cs.
 //
 //  Usage:
 //    rdpeek-agent-service                 run as a service (invoked by the SCM)

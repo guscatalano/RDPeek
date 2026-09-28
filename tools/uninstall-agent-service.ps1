@@ -39,4 +39,14 @@ if (-not $svc) {
 # Best-effort cleanup of any agent the service may have left behind.
 Get-Process rdpeek-agent -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
+# The service launches the agent via per-session tasks under the \RDPeek\ folder
+# (Agent-S<sessionId>). Remove any strays. This is the service's OWN folder and does not
+# touch the 'RDPeek Agent' task created by install-agent-web.ps1 (which lives at the root).
+Get-ScheduledTask -TaskPath '\RDPeek\' -ErrorAction SilentlyContinue |
+    Where-Object { $_.TaskName -like 'Agent-S*' } |
+    ForEach-Object {
+        Write-Host "Removing per-session task \RDPeek\$($_.TaskName)..."
+        Unregister-ScheduledTask -TaskName $_.TaskName -TaskPath '\RDPeek\' -Confirm:$false -ErrorAction SilentlyContinue
+    }
+
 Write-Host "Uninstalled. (The scheduled-task path, if installed, is untouched.)" -ForegroundColor Green
