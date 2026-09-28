@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $repo = 'C:\Users\crimson\source\repos\DVC_Tools'
 $root = $env:TEMP
 $N = 3                                   # number of simulated RDP connections

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Obtain MockRdpCli.exe — the mock RDP server (github.com/guscatalano/MockRDPServer) — for
     RDPeek's DVC integration checkpoint.

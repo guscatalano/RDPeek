@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     End-to-end DVC checkpoint: drive the RDPeek client plugin against the mock RDP server
     over a real dynamic virtual channel, using real mstsc.exe.

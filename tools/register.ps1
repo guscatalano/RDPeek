@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Register the RDPeek client DVC plugin (LocalServer32 COM activation) so mstsc loads it.
 

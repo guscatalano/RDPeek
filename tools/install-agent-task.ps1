@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     One-time setup on a machine you own: install the RDPeek agent and auto-start it on
     every RDP connection. Run this ONCE inside the remote session.

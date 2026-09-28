@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Install the RDPeek Agent Service — an OPT-IN Windows Service that supervises the
+    Install the RDPeek Agent Service - an OPT-IN Windows Service that supervises the
     in-session agent (rdpeek-agent.exe serve) for resiliency: boot-time start, auto-restart
     on crash, and coverage of every active user session, centrally.
 
@@ -25,7 +25,7 @@
 #>
 [CmdletBinding()]
 param(
-    # Defaults to the exe next to this script — so the released server bundle (exe + script together)
+    # Defaults to the exe next to this script - so the released server bundle (exe + script together)
     # installs with no arguments. Pass a path when the script and exe live apart.
     [string] $ServiceExePath = (Join-Path $PSScriptRoot 'rdpeek-agent-service.exe'),
     [string] $AgentExePath,
@@ -56,7 +56,7 @@ if ($AgentExePath) {
 # If the service already exists, stop + remove it first so we can re-point binPath.
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existing) {
-    Write-Host "Service '$ServiceName' already exists — stopping and recreating." -ForegroundColor Yellow
+    Write-Host "Service '$ServiceName' already exists - stopping and recreating." -ForegroundColor Yellow
     if ($existing.Status -ne 'Stopped') { Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue }
     # sc.exe delete is the reliable cross-version removal.
     & sc.exe delete $ServiceName | Out-Null

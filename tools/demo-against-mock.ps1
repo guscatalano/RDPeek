@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     One-command RDPeek demo against the mock: starts the REAL agent, the mock bridging its
     diagnostics DVC to that agent, and registers the client plugin — then you connect mstsc and open

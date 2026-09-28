@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Headless end-to-end DVC checkpoint: load the RDPeek client plugin against the mock RDP server
     and verify the diagnostics handshake — no interactive desktop, so it runs in CI.

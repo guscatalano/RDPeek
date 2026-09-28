@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Clipboard-only setup: download the RDPeek agent and auto-start it on every RDP connect.
     No drive redirection needed — only clipboard (to paste) + internet (to download).
