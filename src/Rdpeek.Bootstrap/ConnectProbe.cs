@@ -27,7 +27,11 @@ internal sealed class ConnectProbe : Form
     private AgentWatch? _watch;
     private bool _reachedConnected;
     private bool _agentDetected;
+    private bool _reasonLogged;
     private DateTime _deadlineUtc;
+    private RdpEventSink? _sink;
+    private System.Runtime.InteropServices.ComTypes.IConnectionPoint? _sinkCp;
+    private int _sinkCookie;
 
     /// <summary>0 = reached "connected", 2 = timed out before connecting, 3 = error.</summary>
     public int ExitCode { get; private set; } = 2;
@@ -70,13 +74,17 @@ internal sealed class ConnectProbe : Form
             dynamic adv = rdp.AdvancedSettings2;
             adv.RDPPort = _port;
             TrySet(() => adv.ClearTextPassword = "rdpeek");
-            // Offer the negotiation-based security layer so the SSL bit is present in the
-            // X.224 request; a TLS-only server (like the mock) then selects SSL. NOTE:
-            // AuthenticationLevel 0 does NOT just skip the cert check — it drops to Standard RDP
-            // security and requests "Rdp" (no TLS bit), which a TLS-only server rejects
-            // (SSL_REQUIRED_BY_SERVER). Verified 2026-09-20. Keep >= 1; trust/pin the cert instead.
+            // Offer the negotiation-based security layer so the SSL bit is present in the X.224
+            // request; a TLS-only server (like the mock) then selects SSL. AuthenticationLevel = 0
+            // ("connect and don't warn") is required for an UNATTENDED connect: at the default
+            // "warn" level the control pops a modal "the identity of the remote computer cannot be
+            // verified" dialog right after the TLS handshake (it fires OnAuthenticationWarningDisplayed)
+            // that nothing dismisses, so the connect hangs until timeout — confirmed by an event-sink
+            // trace. This is a test/probe path that deliberately does not authenticate the server (see
+            // the class summary); level 0 still negotiates SSL here (it does NOT force Standard RDP —
+            // an earlier note claimed otherwise; disproved end-to-end against the TLS-only mock).
             TrySet(() => adv.NegotiateSecurityLayer = true);
-            TrySet(() => adv.AuthenticationLevel = 2);
+            TrySet(() => adv.AuthenticationLevel = 0);
             TrySet(() => adv.EnableAutoReconnect = false);
             TrySet(() => adv.GrabFocusOnConnect = false);
             // KeyboardHookMode 1 = send Windows-key combinations to the remote computer, so the
@@ -89,6 +97,20 @@ internal sealed class ConnectProbe : Form
             // Start watching for the agent's DVC check-in before connecting, so the broker pipe is
             // already listening and the log baseline is taken now (stale lines won't count).
             _watch = new AgentWatch();
+
+            // Advise an event sink so a failed connect names its reason (OnDisconnected/OnFatalError),
+            // rather than just timing out. describe() maps a reason code to the control's own text.
+            _sink = new RdpEventSink(reason =>
+            {
+                try
+                {
+                    int ext = 0;
+                    try { ext = (int)((dynamic)_rdp.Control).ExtendedDisconnectReason; } catch { }
+                    return (string)((dynamic)_rdp.Control).GetErrorDescription((uint)reason, (uint)ext);
+                }
+                catch { return ""; }
+            });
+            _sinkCookie = RdpEventSink.Advise(rdp, _sink, out _sinkCp);
 
             Console.WriteLine($"connecting to {_host}:{_port} …");
             rdp.Connect();
@@ -145,6 +167,28 @@ internal sealed class ConnectProbe : Form
         int state;
         try { state = (short)((dynamic)_rdp.Control).Connected; }
         catch { return; }
+
+        // If the control aborts before it ever reaches "connected", surface WHY: the RDP control keeps
+        // the (extended) disconnect reason as a readable property after a failed connect. This is the
+        // difference between "connect timed out" (useless) and e.g. a specific cert/security code.
+        if (state == 0 && !_reachedConnected)
+        {
+            try
+            {
+                int ext = (int)((dynamic)_rdp.Control).ExtendedDisconnectReason;
+                if (ext != 0 && !_reasonLogged)
+                {
+                    _reasonLogged = true;
+                    string desc = "";
+                    try { desc = (string)((dynamic)_rdp.Control).GetErrorDescription((uint)ext, (uint)ext); } catch { }
+                    Console.WriteLine($"control disconnected before connect: ExtendedDisconnectReason={ext} {desc}".TrimEnd());
+                    ExitCode = 2;
+                    Close();
+                    return;
+                }
+            }
+            catch { /* property not available yet */ }
+        }
 
         if (state == 1 && !_reachedConnected)
         {
@@ -241,6 +285,11 @@ internal sealed class ConnectProbe : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        if (_sinkCp is not null && _sinkCookie != 0)
+        {
+            try { _sinkCp.Unadvise(_sinkCookie); } catch { }
+            _sinkCookie = 0;
+        }
         base.OnFormClosed(e);
         _watch?.Dispose();
     }
