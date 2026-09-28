@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
 
 namespace Rdpeek.AgentService;
 
@@ -7,17 +6,15 @@ namespace Rdpeek.AgentService;
 //  WHY THIS FILE EXISTS
 // -------------------------------------------------------------------------------------
 //  A Windows Service runs in **Session 0**, which is isolated and has **no interactive
-//  RDP DVC**. So the service itself CANNOT open the diagnostics channel:
-//  WTSVirtualChannelOpenEx(WTS_CURRENT_SESSION, ...) called from session 0 finds
-//  nothing to attach to. The service's job is therefore to *launch the agent INTO each
-//  interactive user session* and let that in-session process do the real DVC work.
-//
-//  That cross-session launch is the whole reason for the P/Invokes below:
-//    - WTSEnumerateSessions / WTSQuerySessionInformation : find active user sessions
-//    - WTSQueryUserToken                                  : get that session's user token
-//    - CreateEnvironmentBlock                             : build the user's env block
-//    - CreateProcessAsUser (lpDesktop = winsta0\default)  : spawn rdpeek-agent.exe there
-//  All of this requires the service to run as LocalSystem (SeTcbPrivilege), i.e. admin.
+//  RDP DVC**. So the service itself CANNOT open the diagnostics channel and cannot simply
+//  spawn the agent into a user session with CreateProcessAsUser either: anything a
+//  session-0 service creates in another session dies at desktop-attach (0xC0000142,
+//  verified). So the service delegates the actual launch to the **Task Scheduler**, which
+//  is the supported way to place a process in a user's session WITH its interactive
+//  desktop (so the agent's systray works). The P/Invokes below are just what's left:
+//    - WTSEnumerateSessions / WTSQuerySessionInformation : find active sessions + their user
+//    - OpenProcess / GetExitCodeProcess / TerminateProcess : monitor & stop the agent proc
+//  The task itself is registered/run/deleted via schtasks (see SessionLauncher).
 // =====================================================================================
 internal static class NativeMethods
 {
@@ -35,6 +32,13 @@ internal static class NativeMethods
         WTSReset,
         WTSDown,
         WTSInit,
+    }
+
+    // Subset of WTS_INFO_CLASS we use.
+    internal enum WTS_INFO_CLASS
+    {
+        WTSUserName = 5,
+        WTSDomainName = 7,
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -55,93 +59,43 @@ internal static class NativeMethods
         out IntPtr ppSessionInfo,
         out int pCount);
 
+    [DllImport("wtsapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    internal static extern bool WTSQuerySessionInformationW(
+        IntPtr hServer,
+        uint SessionId,
+        WTS_INFO_CLASS WTSInfoClass,
+        out IntPtr ppBuffer,
+        out uint pBytesReturned);
+
     [DllImport("wtsapi32.dll")]
     internal static extern void WTSFreeMemory(IntPtr pMemory);
 
-    // Retrieves the primary access token of the user logged on to the given session.
-    // Fails (returns false) for sessions with no interactive user (e.g. the listener /
-    // session 0), which is how we skip them.
-    [DllImport("wtsapi32.dll", SetLastError = true)]
-    internal static extern bool WTSQueryUserToken(uint SessionId, out SafeAccessTokenHandle phToken);
+    // ---- process monitoring (kernel32) ----
 
-    // ---- environment block (userenv) ----
+    internal const uint PROCESS_TERMINATE = 0x0001;
+    internal const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+    internal const uint SYNCHRONIZE = 0x00100000;
 
-    [DllImport("userenv.dll", SetLastError = true)]
-    internal static extern bool CreateEnvironmentBlock(out IntPtr lpEnvironment, SafeAccessTokenHandle hToken, bool bInherit);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
 
-    [DllImport("userenv.dll", SetLastError = true)]
-    internal static extern bool DestroyEnvironmentBlock(IntPtr lpEnvironment);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern bool GetExitCodeProcess(IntPtr hProcess, out uint lpExitCode);
 
-    // ---- process creation (advapi32 / kernel32) ----
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct STARTUPINFO
-    {
-        public int cb;
-        public string? lpReserved;
-        public string? lpDesktop;   // MUST be "winsta0\\default" to land on the user's interactive desktop
-        public string? lpTitle;
-        public int dwX, dwY, dwXSize, dwYSize, dwXCountChars, dwYCountChars, dwFillAttribute;
-        public int dwFlags;
-        public short wShowWindow;
-        public short cbReserved2;
-        public IntPtr lpReserved2;
-        public IntPtr hStdInput, hStdOutput, hStdError;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct PROCESS_INFORMATION
-    {
-        public IntPtr hProcess;
-        public IntPtr hThread;
-        public int dwProcessId;
-        public int dwThreadId;
-    }
-
-    internal const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
-    internal const uint CREATE_NO_WINDOW = 0x08000000;
-    internal const uint CREATE_NEW_CONSOLE = 0x00000010;
-
-    // A service has no console, so unless we hand the child valid std handles its stdio is invalid and
-    // the console/.NET-host startup aborts within ~0s (confirmed on a live box). We point them at NUL.
-    internal const uint STARTF_USESTDHANDLES = 0x00000100;
-    internal const uint GENERIC_WRITE = 0x40000000;
-    internal const uint OPEN_EXISTING = 3;
-    internal const uint FILE_SHARE_READ_WRITE = 0x00000003;
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct SECURITY_ATTRIBUTES
-    {
-        public int nLength;
-        public IntPtr lpSecurityDescriptor;
-        public bool bInheritHandle;
-    }
-
-    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    internal static extern IntPtr CreateFileW(
-        string lpFileName, uint dwDesiredAccess, uint dwShareMode,
-        ref SECURITY_ATTRIBUTES lpSecurityAttributes, uint dwCreationDisposition,
-        uint dwFlagsAndAttributes, IntPtr hTemplateFile);
-
-    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    internal static extern bool CreateProcessAsUserW(
-        SafeAccessTokenHandle hToken,
-        string? lpApplicationName,
-        string lpCommandLine,
-        IntPtr lpProcessAttributes,
-        IntPtr lpThreadAttributes,
-        bool bInheritHandles,
-        uint dwCreationFlags,
-        IntPtr lpEnvironment,
-        string? lpCurrentDirectory,
-        ref STARTUPINFO lpStartupInfo,
-        out PROCESS_INFORMATION lpProcessInformation);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool TerminateProcess(IntPtr hProcess, uint uExitCode);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool CloseHandle(IntPtr hObject);
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool TerminateProcess(IntPtr hProcess, uint uExitCode);
+    /// <summary>Query a single string session-info value (e.g. user name), or null.</summary>
+    internal static string? QuerySessionString(uint sessionId, WTS_INFO_CLASS info)
+    {
+        if (!WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, sessionId, info, out IntPtr buf, out _))
+            return null;
+        try { return Marshal.PtrToStringUni(buf); }
+        finally { WTSFreeMemory(buf); }
+    }
 }

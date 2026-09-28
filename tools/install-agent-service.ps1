@@ -34,7 +34,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# --- must be elevated: CreateProcessAsUser / LocalSystem service creation need admin ---
+# --- must be elevated: LocalSystem service creation + per-session task registration need admin ---
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
            ).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
 if (-not $isAdmin) {

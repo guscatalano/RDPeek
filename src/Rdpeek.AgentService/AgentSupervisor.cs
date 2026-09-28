@@ -53,6 +53,8 @@ internal sealed class AgentSupervisor : IDisposable
             agent.Terminate();
             agent.Dispose();
         }
+        // Remove the per-session task whether or not we were tracking a process for it.
+        SessionLauncher.RemoveTask(sessionId);
     }
 
     /// <summary>Stop everything and terminate all agents this service started.</summary>
@@ -72,6 +74,7 @@ internal sealed class AgentSupervisor : IDisposable
             _log($"Service stopping; terminating agent pid {a.ProcessId} (session {a.SessionId}).");
             a.Terminate();
             a.Dispose();
+            SessionLauncher.RemoveTask(a.SessionId);
         }
     }
 
@@ -143,6 +146,7 @@ internal sealed class AgentSupervisor : IDisposable
         {
             _log($"Agent for session {sessionId} exited; session no longer active — not relaunching.");
             lock (_gate) _failureStreak.Remove(sessionId);
+            SessionLauncher.RemoveTask(sessionId);
             return;
         }
 
@@ -157,7 +161,8 @@ internal sealed class AgentSupervisor : IDisposable
             _failureStreak[sessionId] = nextStreak;
         }
 
-        _log($"Agent for session {sessionId} exited after {ranFor.TotalSeconds:F0}s " +
+        string exit = agent.ExitCode is uint c ? $"exit 0x{c:X8}" : "exit code unknown";
+        _log($"Agent for session {sessionId} exited after {ranFor.TotalSeconds:F0}s ({exit}) " +
              $"(failure #{nextStreak}); relaunching in {delay.TotalSeconds:F0}s.");
 
         _ = RelaunchAfterAsync(sessionId, delay);
