@@ -61,6 +61,7 @@ public sealed partial class MainWindow : Window
     private void OnNavChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         var tag = (args.SelectedItem as NavigationViewItem)?.Tag as string ?? "dash";
+        Vm.OnOverviewTab = tag == "dash";   // hide the redundant header picker on Overview (the rail selects there)
         ConnectView.Visibility = tag == "connect" ? Visibility.Visible : Visibility.Collapsed;
         DashView.Visibility = tag == "dash" ? Visibility.Visible : Visibility.Collapsed;
         NetView.Visibility = tag == "net" ? Visibility.Visible : Visibility.Collapsed;

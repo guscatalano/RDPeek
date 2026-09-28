@@ -231,6 +231,13 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<ProcRow> TopProcesses { get; } = new();   // top 5, for the Overview
     [ObservableProperty] private string _selectedHealthText = "—";
     [ObservableProperty] private Brush _selectedHealthBrush = UiBrushes.Muted;
+    // The header connection picker is redundant on Overview (the fleet rail selects there), so it shows
+    // only on other tabs — and only when there are connections.
+    [ObservableProperty] private bool _onOverviewTab = true;
+    [ObservableProperty] private Visibility _headerPickerVisibility = Visibility.Collapsed;
+    partial void OnOnOverviewTabChanged(bool value) => UpdateHeaderPicker();
+    private void UpdateHeaderPicker() =>
+        HeaderPickerVisibility = (!OnOverviewTab && Connections.Count > 0) ? Visibility.Visible : Visibility.Collapsed;
     public ObservableCollection<ChannelRow> Channels { get; } = new();
     public ObservableCollection<NetRow> Network { get; } = new();
     public ObservableCollection<SessionRow> Sessions { get; } = new();
@@ -1337,6 +1344,7 @@ public partial class MainViewModel : ObservableObject
         UpdateStatus(windows.Count, states);
         UpdateConnectionBar();
         UpdateWindowTarget();
+        UpdateHeaderPicker();   // connection count may have changed
     }
 
     /// <summary>Point the Window controls at the selected connection's mstsc, and enable them only

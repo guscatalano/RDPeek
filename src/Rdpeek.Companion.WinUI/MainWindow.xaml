@@ -61,7 +61,7 @@
                 <!-- Persistent connection picker: which host is in focus, switchable on EVERY tab -->
                 <ComboBox ItemsSource="{x:Bind Vm.Connections}" SelectedItem="{x:Bind Vm.SelectedConnection, Mode=TwoWay}"
                           MinWidth="220" VerticalAlignment="Center"
-                          Visibility="{x:Bind local:Ui.VisibleIfAny(Vm.Connections), Mode=OneWay}"
+                          Visibility="{x:Bind Vm.HeaderPickerVisibility, Mode=OneWay}"
                           ToolTipService.ToolTip="The connection all tabs are showing — switch focus here">
                     <ComboBox.ItemTemplate>
                         <DataTemplate x:DataType="local:ConnectionRow">
