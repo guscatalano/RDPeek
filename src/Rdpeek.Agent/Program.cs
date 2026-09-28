@@ -24,6 +24,9 @@ switch (command)
         return 0;
 
     case "serve":
+        // Self-update first (best-effort, before opening any channel so there's never a 2nd instance):
+        // if a newer rdpeek-agent.exe is on GitHub, swap and re-exec. Disable with --no-update.
+        if (SelfUpdate.MaybeUpdateAndReexec(args)) return 0;
         // Opens the DVC channel and serves the collectors. Requires a live RDP
         // session with the RDPeek client plugin listening on the same channel.
         // --file-root <path> (repeatable) confines file PULL; defaults to %TEMP%.

@@ -56,7 +56,7 @@ jobs:
       - name: Stage client plugins for the MSI
         shell: pwsh
         run: |
-          dotnet publish src/Rdpeek.Plugin -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o publish/plugin
+          dotnet publish src/Rdpeek.Plugin -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:Version=${{ steps.ver.outputs.ver }} -o publish/plugin
           Copy-Item publish/plugin/rdpeek-plugin.exe publish/companion/
           & "$env:GITHUB_WORKSPACE\src\Rdpeek.WindowPlugin\build.cmd"
           Copy-Item src/Rdpeek.WindowPlugin/bin/rdpeek-window-plugin.dll publish/companion/

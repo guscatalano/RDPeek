@@ -14,6 +14,19 @@ internal static class ServeLoop
     private const string InspectorChannel = "dvc::diag::inspector";
     private static IReadOnlyList<string> _fileRoots = Array.Empty<string>();
     private static bool _allowShell;
+    private static int _updateTriggered;
+
+    /// <summary>A client connected and advertised its version. If it's newer than this agent, pull the
+    /// latest release and re-exec — the running session updates itself. Once per process; best-effort.</summary>
+    private static void OnClientVersion(string clientVersion)
+    {
+        if (Interlocked.Exchange(ref _updateTriggered, 1) != 0) return;
+        if (!SelfUpdate.ClientIsNewer(clientVersion)) { Interlocked.Exchange(ref _updateTriggered, 0); return; }
+        Logger.Log($"client v{clientVersion} is newer than this agent — updating");
+        Console.WriteLine($"[update] client v{clientVersion} is newer — updating agent…");
+        if (SelfUpdate.MaybeUpdateAndReexec(Environment.GetCommandLineArgs().Skip(1).ToArray()))
+            Environment.Exit(0);   // new agent launched; drop this one so it takes over the channel
+    }
 
     public static int Run(IReadOnlyList<string> fileRoots, bool allowShell = false)
     {
@@ -72,7 +85,7 @@ internal static class ServeLoop
             WtsChannel.WriteFrame(h, Frame.Encode(env)); // raw — client's DVC layer delivers as-is
             return Task.CompletedTask;
         });
-        _ = new AgentCore(router, _fileRoots, allowShell: _allowShell);
+        _ = new AgentCore(router, _fileRoots, allowShell: _allowShell, onClientVersion: OnClientVersion);
 
         var buffer = new byte[64 * 1024];
         while (!stop.IsSet)

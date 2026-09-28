@@ -331,6 +331,14 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
 
     // The broker line is newline-terminated and the feed uses \t/\x1e/\x1f as separators, so a field
     // name or value must not contain any of them.
+    // The plugin's stamped assembly version (CI passes -p:Version), sent in Hello so the agent can
+    // self-update when this client is newer. Falls back to "0.0.0" for an unstamped dev build.
+    private static string ClientVersionString()
+    {
+        var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        return v is null ? "0.0.0" : $"{v.Major}.{v.Minor}.{v.Build}";
+    }
+
     private static string Clean(string s) =>
         s.Replace('\t', ' ').Replace('\n', ' ').Replace('\r', ' ').Replace('\x1e', ' ').Replace('\x1f', ' ');
 
@@ -395,9 +403,10 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
     {
         try
         {
+            var ver = ClientVersionString();
             var caps = await RequestAsync(new Envelope
             {
-                Hello = new Hello { ProtocolVersion = 1, ClientBuild = "rdpeek-plugin/0.1" },
+                Hello = new Hello { ProtocolVersion = 1, ClientBuild = $"rdpeek-plugin/{ver}", ClientVersion = ver },
             });
             if (caps?.BodyCase == Envelope.BodyOneofCase.Capabilities)
             {
@@ -413,6 +422,7 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
             }
             else
                 Logger.Log($"unexpected reply to Hello: {caps?.BodyCase.ToString() ?? "none"}");
+            // (ClientVersion is read from the plugin's stamped assembly version — see ClientVersionString.)
 
             // Live signals (RTT, DVC counters, frame stats) tick fast; inventory is polled slower.
             _ = FastLoopAsync();

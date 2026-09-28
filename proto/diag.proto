@@ -275,6 +275,7 @@ message ClientLink {
 message Hello {
   uint32 protocol_version = 1;   // bump on breaking wire changes
   string client_build     = 2;   // free-form: viewer version string
+  string client_version   = 3;   // dotted numeric (e.g. "0.3.4"); lets the agent self-update when the client is newer
 }
 
 message Capabilities {

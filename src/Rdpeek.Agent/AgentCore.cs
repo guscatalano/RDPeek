@@ -21,13 +21,16 @@ internal sealed class AgentCore
     private readonly IAgentData _data;
     private readonly bool _fake;
     private readonly bool _allowShell;
+    private readonly Action<string>? _onClientVersion;
 
-    public AgentCore(EnvelopeRouter router, IReadOnlyList<string>? fileRoots = null, IAgentData? data = null, bool allowShell = false)
+    public AgentCore(EnvelopeRouter router, IReadOnlyList<string>? fileRoots = null, IAgentData? data = null,
+                     bool allowShell = false, Action<string>? onClientVersion = null)
     {
         _router = router;
         _fake = data is not null and not RealAgentData;
         _data = data ?? new RealAgentData(_sessionId);
         _allowShell = allowShell;
+        _onClientVersion = onClientVersion;
         _fileRoots = fileRoots ?? Array.Empty<string>();
         // File PULL is served from within the advertised roots only (read-only). No roots => the
         // capability is off and every path is rejected.
@@ -46,6 +49,8 @@ internal sealed class AgentCore
             {
                 case Envelope.BodyOneofCase.Hello:
                     _ = _router.RespondAsync(new Envelope { Capabilities = Capabilities() }, env.RequestId);
+                    // A newer client just connected — let the host decide whether to self-update the agent.
+                    if (!string.IsNullOrEmpty(env.Hello.ClientVersion)) _onClientVersion?.Invoke(env.Hello.ClientVersion);
                     break;
 
                 // Echo verbatim. The client times the round trip on its own clock, so
