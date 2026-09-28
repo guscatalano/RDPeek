@@ -136,6 +136,7 @@ internal sealed class AgentTray : IDisposable
         using var cts = new CancellationTokenSource();
         AgentTray? tray = null;
         int rc = 0;
+        bool exitRequested = false;   // true only when the user picks Exit (vs. the loop ending for any other reason)
 
         tray = new AgentTray(cmd =>
         {
@@ -149,6 +150,7 @@ internal sealed class AgentTray : IDisposable
                     catch (Exception ex) { Logger.Log($"tray: open log failed: {ex.Message}"); }
                     break;
                 case CmdExit:
+                    exitRequested = true;
                     cts.Cancel();          // ask the serve loop to stop…
                     PostQuitMessage(0);    // …and break our own message loop
                     break;
@@ -171,8 +173,24 @@ internal sealed class AgentTray : IDisposable
             DispatchMessageW(ref msg);
         }
 
-        cts.Cancel();
-        worker.Join(TimeSpan.FromSeconds(3));
+        if (exitRequested)
+        {
+            // The user chose Exit — stop serving and quit.
+            cts.Cancel();
+            worker.Join(TimeSpan.FromSeconds(3));
+        }
+        else if (worker.IsAlive)
+        {
+            // The message loop ended without an Exit request AND the serve loop is still running — the
+            // tray couldn't operate in this launch context (e.g. a service-spawned session process,
+            // where the child has no usable message queue). Serving is the agent's whole job, so keep
+            // going headless (no icon) instead of exiting; the service/session tears us down when done.
+            Logger.Log("tray unavailable (message loop ended without Exit); serving headless.");
+            tray.Dispose();
+            worker.Join();   // block on the serve loop; it exits only when the process is stopped
+            return rc;
+        }
+
         tray.Dispose();
         return rc;
     }

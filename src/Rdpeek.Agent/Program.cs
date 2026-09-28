@@ -40,7 +40,17 @@ switch (command)
             bool trace = args.Contains("--allow-trace");
             if (args.Contains("--console"))
                 return ServeLoop.Run(roots, shell, trace);
-            return AgentTray.RunServe((onStatus, cancel) => ServeLoop.Run(roots, shell, trace, onStatus, cancel));
+            try
+            {
+                return AgentTray.RunServe((onStatus, cancel) => ServeLoop.Run(roots, shell, trace, onStatus, cancel));
+            }
+            catch (Exception ex)
+            {
+                // The tray host couldn't start (e.g. a service-spawned session process with no usable
+                // message queue). Serving is the point, so fall back to a plain headless serve.
+                Logger.Log($"tray host failed ({ex.Message}); serving headless.");
+                return ServeLoop.Run(roots, shell, trace);
+            }
         }
 
     case "serve-tcp":
