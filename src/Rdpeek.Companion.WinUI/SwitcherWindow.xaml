@@ -29,17 +29,30 @@
                     Content="Hide ‹" ToolTipService.ToolTip="Hide the sidebar (shove the cursor to the left edge to bring it back)" />
         </Grid>
 
-        <!-- local machine, listed like a session -->
-        <Button Grid.Row="1" Click="OnLocalDesktop" Background="Transparent" BorderThickness="0"
-                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="14,9">
-            <StackPanel Orientation="Horizontal" Spacing="10">
-                <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE7F4;" FontSize="14" VerticalAlignment="Center" />
-                <StackPanel Spacing="1">
-                    <TextBlock Text="Local desktop" FontWeight="SemiBold" />
-                    <TextBlock Text="minimize all sessions" FontSize="11" Opacity="0.6" />
+        <!-- local machine + dashboard overlay, listed like sessions -->
+        <Grid Grid.Row="1" ColumnSpacing="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0" Click="OnLocalDesktop" Background="Transparent" BorderThickness="0"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="14,9">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE7F4;" FontSize="14" VerticalAlignment="Center" />
+                    <StackPanel Spacing="1">
+                        <TextBlock Text="Local desktop" FontWeight="SemiBold" />
+                        <TextBlock Text="minimize all sessions" FontSize="11" Opacity="0.6" />
+                    </StackPanel>
                 </StackPanel>
-            </StackPanel>
-        </Button>
+            </Button>
+            <Button Grid.Column="1" Click="OnDashboard" Background="Transparent" BorderThickness="0" Padding="12,9"
+                    VerticalAlignment="Stretch" ToolTipService.ToolTip="Toggle the dashboard overlay (live health/metrics HUD)">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE9D9;" FontSize="14" VerticalAlignment="Center" />
+                    <TextBlock Text="Dashboard" FontSize="12" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+        </Grid>
 
         <!-- one row per open RDP connection -->
         <ListView Grid.Row="2" x:Name="List" ItemsSource="{x:Bind Vm.Connections}"

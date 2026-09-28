@@ -121,6 +121,8 @@ public sealed partial class MainWindow : Window
     private readonly FloatingButtonWindow _floating;
     private readonly FadeWindow _fade;
     private readonly TrayIcon _tray;
+    private DashboardOverlayWindow? _dashOverlay;
+    private bool _dashVisible;
     private bool _switcherVisible;
     private bool _exiting;
 
@@ -174,6 +176,7 @@ public sealed partial class MainWindow : Window
         _exiting = true;
         try { _tray.Dispose(); } catch { }
         try { _switcher?.Close(); } catch { }
+        try { _dashOverlay?.Close(); } catch { }
         try { _handle?.Close(); _floating?.Close(); _fade?.Close(); } catch { }
         try { _edge?.Dispose(); } catch { }
         try { Vm.Shutdown(); } catch { }
@@ -192,8 +195,26 @@ public sealed partial class MainWindow : Window
         if (_switcher is not null) return;
         _switcher = new SwitcherWindow(Vm);
         _switcher.HideRequested += HideSwitcher;
+        _switcher.DashboardRequested += ToggleDashboardOverlay;
         _switcher.Closed += (_, _) => { _switcher = null; _switcherVisible = false; };
         _switcher.DockTo(Vm.DockRight);
+    }
+
+    /// <summary>Show/hide the translucent dashboard HUD over the current session. Created lazily and
+    /// reused; shares the view model so it's live whenever it's up.</summary>
+    private void ToggleDashboardOverlay()
+    {
+        if (_dashOverlay is { } d && _dashVisible) { d.AppWindow.Hide(); _dashVisible = false; return; }
+        if (_dashOverlay is null)
+        {
+            _dashOverlay = new DashboardOverlayWindow(Vm);
+            _dashOverlay.CloseRequested += () => { _dashOverlay?.AppWindow.Hide(); _dashVisible = false; };
+            _dashOverlay.Closed += (_, _) => { _dashOverlay = null; _dashVisible = false; };
+        }
+        _dashOverlay.PositionTopCentre();
+        _dashOverlay.AppWindow.Show(true);
+        _dashOverlay.Activate();
+        _dashVisible = true;
     }
 
     /// <summary>Move the nub, panel and reveal edge to the chosen side.</summary>

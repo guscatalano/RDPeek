@@ -20,6 +20,9 @@ public sealed partial class SwitcherWindow : Window
     /// trigger can bring the same instance back.</summary>
     public event Action? HideRequested;
 
+    /// <summary>Raised when the user clicks Dashboard; the owner toggles the dashboard overlay HUD.</summary>
+    public event Action? DashboardRequested;
+
     public SwitcherWindow(MainViewModel vm)
     {
         Vm = vm;
@@ -73,6 +76,12 @@ public sealed partial class SwitcherWindow : Window
     }
 
     private void OnHide(object sender, RoutedEventArgs e) => HideRequested?.Invoke();
+
+    private void OnDashboard(object sender, RoutedEventArgs e)
+    {
+        DashboardRequested?.Invoke();
+        HideRequested?.Invoke();   // tuck the sidebar away so the overlay is what you see
+    }
 
     /// <summary>Slide away when the pointer leaves the panel — a peek panel disappears when you move off it.</summary>
     private void OnPointerExited(object sender, PointerRoutedEventArgs e) => HideRequested?.Invoke();

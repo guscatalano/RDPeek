@@ -193,6 +193,24 @@ public partial class MainViewModel : ObservableObject
     private readonly BrokerServer _broker = new();
     private readonly DispatcherQueue _dispatcher;
     private readonly DispatcherQueueTimer _timer;
+    // Dashboard auto-refresh: uncheck to freeze the live views (handy for the process list, which keeps
+    // reordering); the manual Refresh button still does a one-shot. Interval is clamped to something sane.
+    [ObservableProperty] private bool _autoRefresh = true;
+    [ObservableProperty] private double _refreshSeconds = 1;
+
+    private TimeSpan RefreshInterval() => TimeSpan.FromSeconds(Math.Clamp(RefreshSeconds, 0.25, 3600));
+
+    partial void OnAutoRefreshChanged(bool value)
+    {
+        if (_timer is null) return;
+        if (value) { _timer.Interval = RefreshInterval(); _timer.Start(); }
+        else _timer.Stop();
+    }
+
+    partial void OnRefreshSecondsChanged(double value)
+    {
+        if (_timer is not null && AutoRefresh) _timer.Interval = RefreshInterval();
+    }
 
     public ObservableCollection<ConnectionRow> Connections { get; } = new();
     private int _nextOrdinal = 1;   // hands out stable per-session numbers
@@ -343,9 +361,9 @@ public partial class MainViewModel : ObservableObject
         _broker.Start();
 
         _timer = _dispatcher.CreateTimer();
-        _timer.Interval = TimeSpan.FromSeconds(1);
+        _timer.Interval = RefreshInterval();
         _timer.Tick += (_, _) => { Refresh(); SampleSparklines(); };
-        _timer.Start();
+        if (AutoRefresh) _timer.Start();
 
         Refresh();
         _ = RunDiagnostics();   // plugin-registration health, in the background
