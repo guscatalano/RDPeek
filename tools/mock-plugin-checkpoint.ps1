@@ -79,18 +79,19 @@ try {
     for ($i = 0; $i -lt 40 -and -not (Test-Path $certOut); $i++) { Start-Sleep -Milliseconds 100 }
     if (-not (Test-Path $certOut)) { throw "mock did not export its cert to $certOut." }
 
-    # 5. Trust that exact cert so the headless control connects without a prompt. NB: Import-Certificate
-    #    into Cert:\CurrentUser\Root pops a Win32 trust-confirmation dialog ("Do you want to install this
-    #    certificate?") that blocks forever on a headless runner — confirmed by a captured hang dump
-    #    (ImportCertificateCommand.ProcessRecord stuck). The raw X509Store API adds it silently, and
-    #    mirrors the removal in the finally block below.
+    # 5. Trust that exact cert so the headless control connects without a prompt. NB: adding to the
+    #    CurrentUser\Root store via Import-Certificate OR X509Store.Add pops a Win32 trust dialog
+    #    ("Do you want to install this certificate?") that blocks forever on a headless runner — both
+    #    confirmed by captured hang dumps (ImportCertificateCommand.ProcessRecord, then
+    #    CertAddCertificateContextToStore). Write the serialized cert straight to the store's registry
+    #    Blob instead: same result in the store, no CryptoAPI UI, so it never prompts.
     $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certOut)
-    $rootStore = [System.Security.Cryptography.X509Certificates.X509Store]::new('Root', 'CurrentUser')
-    $rootStore.Open('ReadWrite')
-    $rootStore.Add($cert)
-    $rootStore.Close()
     $trustedThumb = $cert.Thumbprint
-    Write-Host "Trusted mock cert $trustedThumb (CurrentUser\Root, removed on exit)." -ForegroundColor DarkGray
+    $blob = $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::SerializedCert)
+    $rootKey = "HKCU:\Software\Microsoft\SystemCertificates\Root\Certificates\$trustedThumb"
+    New-Item -Path $rootKey -Force | Out-Null
+    New-ItemProperty -Path $rootKey -Name Blob -PropertyType Binary -Value $blob -Force | Out-Null
+    Write-Host "Trusted mock cert $trustedThumb (CurrentUser\Root via registry, removed on exit)." -ForegroundColor DarkGray
 
     # 6. Load the plugin via the shim over a headless connection. The hosted mstscax control has been
     #    seen to not tear down headlessly, hanging CI to the 6h default. Bound the wait to
@@ -148,8 +149,9 @@ finally {
     try { if ($mockProc -and -not $mockProc.HasExited) { $mockProc | Stop-Process -Force -ErrorAction SilentlyContinue } } catch {}
     try { if ($registered) { & (Join-Path $PSScriptRoot 'unregister.ps1') 2>$null } } catch {}
     if ($trustedThumb) {
-        # Removing from CurrentUser\Root wants a UI prompt on an interactive desktop; on a headless
-        # CI runner it just succeeds. Either way, don't let it fail the run.
+        # We added the trust anchor by writing the store's registry Blob (step 5), so delete that key.
+        # Deletion never prompts, so also do the X509Store removal as a belt-and-suspenders fallback.
+        try { Remove-Item "HKCU:\Software\Microsoft\SystemCertificates\Root\Certificates\$trustedThumb" -Recurse -Force -ErrorAction SilentlyContinue } catch {}
         try {
             $store = [System.Security.Cryptography.X509Certificates.X509Store]::new('Root', 'CurrentUser')
             $store.Open('ReadWrite')
