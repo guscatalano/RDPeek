@@ -15,32 +15,43 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- header -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12">
-            <TextBlock Text="RDPeek" FontSize="26" FontWeight="SemiBold" VerticalAlignment="Center" />
-            <TextBlock Text="{x:Bind Vm.Version}" FontSize="12" Opacity="0.55" VerticalAlignment="Bottom" Margin="0,0,0,5" />
-            <Button Content="Copy agent-install command" Command="{x:Bind Vm.CopyInstallCommand}" VerticalAlignment="Center" />
-            <Button Content="Refresh" Command="{x:Bind Vm.RefreshCommand}" VerticalAlignment="Center"
-                    ToolTipService.ToolTip="Refresh now (one-shot — works even when auto-refresh is paused)" />
-            <Border VerticalAlignment="Center" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6" Padding="8,3">
-                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <CheckBox Content="Auto" IsChecked="{x:Bind Vm.AutoRefresh, Mode=TwoWay}" MinWidth="0" VerticalAlignment="Center"
-                              ToolTipService.ToolTip="Auto-refresh the live views (uncheck to pause — e.g. to read the process list)" />
-                    <TextBox Width="46" Text="{x:Bind Vm.RefreshSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             VerticalAlignment="Center" IsEnabled="{x:Bind Vm.AutoRefresh, Mode=OneWay}" />
-                    <TextBlock Text="s" VerticalAlignment="Center" Opacity="0.6" />
-                </StackPanel>
-            </Border>
-            <Button Content="Reconnect" Command="{x:Bind Vm.ReconnectCommand}" VerticalAlignment="Center"
-                    ToolTipService.ToolTip="Rehost the broker pipe and re-run checks when a session shows no agent" />
-            <Button Content="Export bundle" Command="{x:Bind Vm.ExportBundleCommand}" VerticalAlignment="Center"
-                    ToolTipService.ToolTip="Collect host, channels, counters, frames and diagnostics into a shareable JSON file" />
-            <HyperlinkButton Content="{x:Bind Vm.UpdateNotice, Mode=OneWay}" Command="{x:Bind Vm.ApplyUpdateCommand}"
-                             VerticalAlignment="Center" Foreground="{ThemeResource SystemFillColorAttentionBrush}"
-                             ToolTipService.ToolTip="{x:Bind Vm.UpdateUri, Mode=OneWay}"
-                             Visibility="{x:Bind local:Ui.VisibleIfText(Vm.UpdateNotice), Mode=OneWay}" />
-        </StackPanel>
+        <!-- header: title + update link on the left, actions in a CommandBar that overflows on narrow windows -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <TextBlock Text="RDPeek" FontSize="26" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="{x:Bind Vm.Version}" FontSize="12" Opacity="0.55" VerticalAlignment="Bottom" Margin="0,0,0,5" />
+                <HyperlinkButton Content="{x:Bind Vm.UpdateNotice, Mode=OneWay}" Command="{x:Bind Vm.ApplyUpdateCommand}"
+                                 VerticalAlignment="Center" Foreground="{ThemeResource SystemFillColorAttentionBrush}"
+                                 ToolTipService.ToolTip="{x:Bind Vm.UpdateUri, Mode=OneWay}"
+                                 Visibility="{x:Bind local:Ui.VisibleIfText(Vm.UpdateNotice), Mode=OneWay}" />
+            </StackPanel>
+
+            <CommandBar Grid.Column="1" Background="Transparent" DefaultLabelPosition="Right"
+                        HorizontalAlignment="Right" VerticalAlignment="Center" IsOpen="False">
+                <AppBarButton Label="Refresh" Icon="Refresh" Command="{x:Bind Vm.RefreshCommand}"
+                              ToolTipService.ToolTip="Refresh now (one-shot — works even when auto-refresh is paused)" />
+                <AppBarElementContainer VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="6,0">
+                        <CheckBox Content="Auto" IsChecked="{x:Bind Vm.AutoRefresh, Mode=TwoWay}" MinWidth="0" VerticalAlignment="Center"
+                                  ToolTipService.ToolTip="Auto-refresh the live views (uncheck to pause — e.g. to read the process list)" />
+                        <TextBox Width="46" Text="{x:Bind Vm.RefreshSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 VerticalAlignment="Center" IsEnabled="{x:Bind Vm.AutoRefresh, Mode=OneWay}" />
+                        <TextBlock Text="s" VerticalAlignment="Center" Opacity="0.6" />
+                    </StackPanel>
+                </AppBarElementContainer>
+                <AppBarButton Label="Reconnect" Icon="Sync" Command="{x:Bind Vm.ReconnectCommand}"
+                              ToolTipService.ToolTip="Rehost the broker pipe and re-run checks when a session shows no agent" />
+                <AppBarButton Label="Export bundle" Icon="Download" Command="{x:Bind Vm.ExportBundleCommand}"
+                              ToolTipService.ToolTip="Collect host, channels, counters, frames and diagnostics into a shareable JSON file" />
+                <CommandBar.SecondaryCommands>
+                    <AppBarButton Label="Copy agent-install command" Command="{x:Bind Vm.CopyInstallCommand}" />
+                </CommandBar.SecondaryCommands>
+            </CommandBar>
+        </Grid>
 
         <!-- persistent connection / liveness bar (applies to whichever tab is open) -->
         <Border Grid.Row="1" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
