@@ -36,8 +36,9 @@ jobs:
     name: Plugin ↔ mock (headless DVC checkpoint)
     runs-on: windows-latest
     needs: build-test
-    # The headless bootstrap can fail to self-terminate, hanging the job to the 6h default. Fail fast.
-    timeout-minutes: 10
+    # The checkpoint has hung to the 6h default (the headless mstscax host / a blocked cmdlet). A parent
+    # watchdog (below) caps it at 5min and dumps the process tree; this is only a last-resort backstop.
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -57,14 +58,37 @@ jobs:
           dotnet tool install -g dotnet-stack
           "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
 
-      # Downloads MockRdp.exe from the mock's latest release, builds the shim (VS C++ tools are
-      # present) + plugin + bootstrap, registers the plugin per-user, trusts the mock's exported
-      # cert (headless → no prompt), loads the plugin via the shim over a real DVC, and asserts the
-      # plugin logged OnNewChannelConnection + the mock's diagnostics capabilities. If the bootstrap
-      # hangs, the script captures a full dump + managed stacks to hang-artifacts/ before failing.
-      - name: Headless plugin checkpoint against the mock
+      # Runs the checkpoint (build shim/plugin/bootstrap, start the mock, trust its cert, load the
+      # plugin via the shim over a real DVC, assert the diag handshake) under a PARENT watchdog: if the
+      # child doesn't exit in 5 min it's hung, so we dump the whole process tree — managed stacks
+      # (dotnet-stack) + full minidumps (comsvcs MiniDump, works on native + managed) + the logs — into
+      # hang-artifacts/, then kill it and fail. The dumps pinpoint exactly which call is blocked.
+      - name: Headless plugin checkpoint against the mock (watchdogged)
         shell: pwsh
-        run: ./tools/mock-plugin-checkpoint.ps1 -MockSource download -HoldSeconds 15
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = 'hang-artifacts'
+          $child = Start-Process pwsh -PassThru -NoNewWindow -ArgumentList @(
+            '-NoProfile','-File','./tools/mock-plugin-checkpoint.ps1',
+            '-MockSource','download','-HoldSeconds','15')
+          if ($child.WaitForExit(300000)) { exit $child.ExitCode }
+
+          Write-Warning "checkpoint (pid $($child.Id)) did not exit in 5min — capturing the process tree."
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          $suspects = Get-Process -ErrorAction SilentlyContinue |
+            Where-Object { $_.ProcessName -in 'pwsh','MockRdp','MockRdpCli','rdpeek-bootstrap','rdpeek-plugin','dotnet' -and $_.Id -ne $PID }
+          foreach ($p in $suspects) {
+            $tag = "$($p.ProcessName)-$($p.Id)"
+            Write-Host "dumping $tag"
+            try { & dotnet-stack report -p $p.Id *> (Join-Path $dir "stack-$tag.txt") } catch { "dotnet-stack failed: $_" | Out-File (Join-Path $dir "stack-$tag.txt") }
+            # comsvcs MiniDump needs an absolute path and no-space args; works on native + managed.
+            $dmp = Join-Path (Resolve-Path $dir).Path "dump-$tag.dmp"
+            try { & rundll32.exe C:\Windows\System32\comsvcs.dll, MiniDump $p.Id $dmp full 2>$null } catch {}
+          }
+          try { Copy-Item "$env:TEMP\rdpeek-*.log" $dir -Force -ErrorAction SilentlyContinue } catch {}
+          try { Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue } catch {}
+          Get-ChildItem $dir -ErrorAction SilentlyContinue | Format-Table Name,Length -AutoSize | Out-String | Write-Host
+          throw "checkpoint hung >5min; dumps + stacks captured in $dir (uploaded as the mock-hang-dump artifact)."
 
       - name: Upload hang diagnostics
         if: always()
