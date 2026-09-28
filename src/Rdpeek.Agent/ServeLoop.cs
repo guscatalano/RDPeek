@@ -45,49 +45,55 @@ internal static class ServeLoop
 
         var waitingSince = DateTime.UtcNow;
         int lastReport = -1;
-        while (!stop.IsSet)
-        {
-            IntPtr h = WtsChannel.Open(InspectorChannel);
-            if (h == IntPtr.Zero)
+
+        // The connect/serve/retry loop lives in ChannelPump (dependency-free + unit-tested): it keeps
+        // re-opening the channel until a client plugin listens, and re-opens after each disconnect.
+        ChannelPump.Run(
+            tryOpen: () =>
             {
-                // No client-side listener yet: either no RDP session, or the RDPeek client plugin isn't
-                // loaded on this connection. Report periodically so the window shows a live status and
-                // the cause is obvious (rather than just sitting on "serving").
-                int secs = (int)(DateTime.UtcNow - waitingSince).TotalSeconds;
-                if (secs / 5 != lastReport)
+                IntPtr h = WtsChannel.Open(InspectorChannel);
+                if (h == IntPtr.Zero)
                 {
-                    lastReport = secs / 5;
-                    Console.WriteLine($"waiting for the RDP client to accept '{InspectorChannel}' … {secs}s" +
-                        (secs >= 15 ? "  (no client plugin? make sure RDPeek is installed on the CLIENT and reconnect the RDP session)" : ""));
+                    // No client-side listener yet: either no RDP session, or the RDPeek client plugin
+                    // isn't loaded on this connection. Report periodically so the window shows a live
+                    // status and the cause is obvious (rather than just sitting on "serving").
+                    int secs = (int)(DateTime.UtcNow - waitingSince).TotalSeconds;
+                    if (secs / 5 != lastReport)
+                    {
+                        lastReport = secs / 5;
+                        Console.WriteLine($"waiting for the RDP client to accept '{InspectorChannel}' … {secs}s" +
+                            (secs >= 15 ? "  (no client plugin? make sure RDPeek is installed on the CLIENT and reconnect the RDP session)" : ""));
+                    }
                 }
-                stop.Wait(1000);
-                continue;
-            }
+                return h;
+            },
+            serve: h =>
+            {
+                Logger.Log("channel open — client connected.");
+                Console.WriteLine($"[connected] client attached on '{InspectorChannel}' — serving.");
+                try
+                {
+                    Serve(h, stop);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Log($"serve loop error: {ex}");
+                }
+                finally
+                {
+                    WtsChannel.Close(h);
+                }
 
-            Logger.Log("channel open — client connected.");
-            Console.WriteLine($"[connected] client attached on '{InspectorChannel}' — serving.");
-            try
-            {
-                Serve(h, stop);
-            }
-            catch (Exception ex)
-            {
-                Logger.Log($"serve loop error: {ex}");
-            }
-            finally
-            {
-                WtsChannel.Close(h);
-            }
-
-            if (!stop.IsSet)
-            {
-                Logger.Log("channel closed — awaiting reconnect.");
-                Console.WriteLine("[disconnected] client detached — waiting for it to come back…");
-                waitingSince = DateTime.UtcNow;
-                lastReport = -1;
-                stop.Wait(1000);
-            }
-        }
+                if (!stop.IsSet)
+                {
+                    Logger.Log("channel closed — awaiting reconnect.");
+                    Console.WriteLine("[disconnected] client detached — waiting for it to come back…");
+                    waitingSince = DateTime.UtcNow;
+                    lastReport = -1;
+                }
+            },
+            stopped: () => stop.IsSet,
+            waitBetween: () => stop.Wait(1000));
 
         Logger.Log("serve stopped.");
         return 0;

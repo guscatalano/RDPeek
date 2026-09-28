@@ -22,6 +22,9 @@
   <ItemGroup>
     <Compile Include="..\..\src\Rdpeek.Agent\DvcTrafficParser.cs" Link="DvcTrafficParser.cs" />
     <Compile Include="..\..\src\Rdpeek.Agent\RateTracker.cs" Link="RateTracker.cs" />
+    <!-- ChannelPump is deliberately dependency-free (like DvcTrafficParser) so the agent's
+         retry/reconnect loop is testable without the WTS API or the rest of the agent. -->
+    <Compile Include="..\..\src\Rdpeek.Agent\ChannelPump.cs" Link="ChannelPump.cs" />
   </ItemGroup>
 
 </Project>

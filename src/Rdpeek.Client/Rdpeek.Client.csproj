@@ -12,6 +12,12 @@
     <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
 
+  <!-- Resilience tests point Broker.ActivePipeName at a unique pipe so they can't collide with a
+       real companion on the same machine. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="ClientLogic.Tests" />
+  </ItemGroup>
+
   <!-- The known-bad graphics-driver list is fetched from GitHub at runtime; embed the checked-in
        copy so DriverAdvisories always has an offline fallback. -->
   <ItemGroup>

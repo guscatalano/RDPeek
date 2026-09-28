@@ -39,6 +39,11 @@ public sealed class BrokerServer : IDisposable
     private readonly ConcurrentDictionary<string, AgentState> _states = new();
     private readonly ConcurrentDictionary<int, StreamWriter> _pluginWriters = new();  // pid -> command sink
     private CancellationTokenSource _cts = new();
+    private readonly string _pipeName;
+
+    /// <summary>Hosts the well-known broker pipe. <paramref name="pipeName"/> defaults to
+    /// <see cref="Broker.PipeName"/>; tests pass a unique name so a running companion can't collide.</summary>
+    public BrokerServer(string? pipeName = null) => _pipeName = pipeName ?? Broker.PipeName;
 
     /// <summary>Raised (on a background thread) whenever a plugin reports a change.</summary>
     public event Action? Changed;
@@ -263,10 +268,10 @@ public sealed class BrokerServer : IDisposable
     /// companion happens to run elevated. Best-effort — a plain pipe still works when
     /// the companion runs non-elevated (same integrity as the plugin).
     /// </summary>
-    private static NamedPipeServerStream CreateServer()
+    private NamedPipeServerStream CreateServer()
     {
         var pipe = new NamedPipeServerStream(
-            Broker.PipeName, PipeDirection.InOut,
+            _pipeName, PipeDirection.InOut,
             NamedPipeServerStream.MaxAllowedServerInstances,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         try { ApplyLowIntegrityLabel(pipe.SafePipeHandle); } catch { /* best-effort */ }

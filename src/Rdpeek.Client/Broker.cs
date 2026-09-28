@@ -27,10 +27,14 @@ public static class Broker
 {
     public const string PipeName = "rdpeek-broker";
 
+    // The pipe the sender targets. Normally the well-known name; a test overrides it (before the
+    // sender connects) so a resilience test can't collide with a real companion on the same box.
+    internal static string ActivePipeName = PipeName;
+
     // A pipe that does not exist can be ruled out in ~2ms this way. NamedPipeClientStream
     // .Connect(timeout) cannot: it spins until the timeout expires, because the server may
     // still show up. That behaviour is what used to hang mstsc for 500ms per report.
-    private const string PipePath = @"\\.\pipe\" + PipeName;
+    private static string PipePath => @"\\.\pipe\" + ActivePipeName;
 
     private const int ConnectTimeoutMs = 50;     // only reached when the pipe already exists
     private const int MinRetryMs = 250;
@@ -223,7 +227,7 @@ public static class Broker
             // Asynchronous is required now the pipe is full-duplex: the background command reader and
             // the telemetry writer run concurrently on the same handle, which would otherwise serialise
             // (a blocking ReadLine would stall writes).
-            var candidate = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+            var candidate = new NamedPipeClientStream(".", ActivePipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
             try
             {
                 candidate.Connect(ConnectTimeoutMs);
