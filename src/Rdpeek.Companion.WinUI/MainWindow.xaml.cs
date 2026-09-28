@@ -53,6 +53,9 @@ public sealed partial class MainWindow : Window
 
         // An MSI-install update exits the app (to unlock files) after launching the installer.
         Vm.RequestExit = () => DispatcherQueue.TryEnqueue(ExitApp);
+
+        // After an export, show a dialog with the path + copy/open (the status line is easy to miss).
+        Vm.ExportCompleted = path => DispatcherQueue.TryEnqueue(() => _ = ShowExportResultAsync(path));
     }
 
     private void OnNavChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -186,6 +189,51 @@ public sealed partial class MainWindow : Window
 
     /// <summary>Start hidden to the tray (used when launched with --tray on logon).</summary>
     public void HideToTray() { try { AppWindow.Hide(); } catch { } }
+
+    /// <summary>After an export, show a dialog with the saved path plus Copy and Open-folder actions,
+    /// so the location isn't lost in a status line that flashes by.</summary>
+    private async System.Threading.Tasks.Task ShowExportResultAsync(string path)
+    {
+        var pathBox = new TextBox
+        {
+            Text = path, IsReadOnly = true, TextWrapping = TextWrapping.Wrap,
+            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+        };
+        var copy = new Button { Content = "Copy path" };
+        copy.Click += (_, _) =>
+        {
+            try
+            {
+                var dp = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                dp.SetText(path);
+                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp);
+                copy.Content = "Copied ✓";
+            }
+            catch { }
+        };
+        var open = new Button { Content = "Open folder" };
+        open.Click += (_, _) =>
+        {
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true }); }
+            catch { }
+        };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        buttons.Children.Add(copy);
+        buttons.Children.Add(open);
+        var content = new StackPanel { Spacing = 10 };
+        content.Children.Add(new TextBlock { Text = "Saved to:", Opacity = 0.8 });
+        content.Children.Add(pathBox);
+        content.Children.Add(buttons);
+
+        var dlg = new ContentDialog
+        {
+            Title = "Support bundle exported",
+            Content = content,
+            CloseButtonText = "Close",
+            XamlRoot = Content.XamlRoot,
+        };
+        try { await dlg.ShowAsync(); } catch { }
+    }
 
     /// <summary>The switcher is created once and shown/hidden (not closed), so the edge trigger and the
     /// Hide button drive the same instance. It shares this window's view model, so it lists the same

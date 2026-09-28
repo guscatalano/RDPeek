@@ -1236,12 +1236,16 @@ public partial class MainViewModel : ObservableObject
                 $"rdpeek-bundle-{safe}-{DateTime.Now:yyyyMMdd-HHmmss}.json");
             System.IO.File.WriteAllText(file, json);
             Status = $"Support bundle written to {file}";
+            ExportCompleted?.Invoke(file);   // the window shows a dialog with copy/open (the path is easy to miss)
         }
         catch (Exception ex)
         {
             Status = $"Bundle export failed: {ex.Message}";
         }
     }
+
+    /// <summary>Set by the window: called with the bundle path so it can show a copy/open dialog.</summary>
+    public Action<string>? ExportCompleted;
 
     [RelayCommand]
     private void CopyInstall()
