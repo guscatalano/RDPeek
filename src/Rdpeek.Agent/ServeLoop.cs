@@ -29,7 +29,16 @@ internal static class ServeLoop
             Environment.Exit(0);   // new agent launched; drop this one so it takes over the channel
     }
 
-    public static int Run(IReadOnlyList<string> fileRoots, bool allowShell = false, bool allowTrace = false)
+    /// <param name="onStatus">
+    /// Optional hook fired on every serve-state transition (waiting / connected / disconnected), so a
+    /// host such as the tray can mirror it. It never replaces the file log or the console lines below.
+    /// </param>
+    /// <param name="cancel">
+    /// Optional external stop signal (e.g. the tray's Exit) in addition to Ctrl+C; cancelling it makes
+    /// the loop unwind exactly as Ctrl+C does.
+    /// </param>
+    public static int Run(IReadOnlyList<string> fileRoots, bool allowShell = false, bool allowTrace = false,
+        Action<AgentStatus, string>? onStatus = null, CancellationToken cancel = default)
     {
         _fileRoots = fileRoots;
         _allowShell = allowShell;
@@ -42,6 +51,8 @@ internal static class ServeLoop
         Console.WriteLine($"rdpeek-agent v{ver} — serving on '{InspectorChannel}' in session {Environment.GetEnvironmentVariable("SESSIONNAME")} (Ctrl+C to stop)");
         var stop = new ManualResetEventSlim(false);
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Set(); };
+        using var reg = cancel.Register(() => stop.Set());
+        onStatus?.Invoke(AgentStatus.Waiting, "RDPeek agent — waiting for client");
 
         var waitingSince = DateTime.UtcNow;
         int lastReport = -1;
@@ -63,6 +74,7 @@ internal static class ServeLoop
                         lastReport = secs / 5;
                         Console.WriteLine($"waiting for the RDP client to accept '{InspectorChannel}' … {secs}s" +
                             (secs >= 15 ? "  (no client plugin? make sure RDPeek is installed on the CLIENT and reconnect the RDP session)" : ""));
+                        onStatus?.Invoke(AgentStatus.Waiting, $"RDPeek agent — waiting for client ({secs}s)");
                     }
                 }
                 return h;
@@ -71,6 +83,7 @@ internal static class ServeLoop
             {
                 Logger.Log("channel open — client connected.");
                 Console.WriteLine($"[connected] client attached on '{InspectorChannel}' — serving.");
+                onStatus?.Invoke(AgentStatus.Connected, "RDPeek agent — connected, serving");
                 try
                 {
                     Serve(h, stop);
@@ -88,6 +101,7 @@ internal static class ServeLoop
                 {
                     Logger.Log("channel closed — awaiting reconnect.");
                     Console.WriteLine("[disconnected] client detached — waiting for it to come back…");
+                    onStatus?.Invoke(AgentStatus.Disconnected, "RDPeek agent — disconnected, reconnecting");
                     waitingSince = DateTime.UtcNow;
                     lastReport = -1;
                 }

@@ -10,6 +10,9 @@ internal static class Logger
     private static readonly string Path =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "rdpeek-agent.log");
 
+    /// <summary>The log file path — surfaced so the tray's "Open log" can shell-open it.</summary>
+    public static string LogPath => Path;
+
     public static void Log(string message)
     {
         try

@@ -32,7 +32,16 @@ switch (command)
         // session with the RDPeek client plugin listening on the same channel.
         // --file-root <path> (repeatable) confines file PULL; defaults to %TEMP%.
         // Interactive shell is ON by default (disable with --no-shell); ETW trace is opt-in (--allow-trace).
-        return ServeLoop.Run(ParseFileRoots(args), !args.Contains("--no-shell"), args.Contains("--allow-trace"));
+        // By default the scheduled-task launch presents a system-tray icon with no console window;
+        // --console keeps the console visible for debugging.
+        {
+            var roots = ParseFileRoots(args);
+            bool shell = !args.Contains("--no-shell");
+            bool trace = args.Contains("--allow-trace");
+            if (args.Contains("--console"))
+                return ServeLoop.Run(roots, shell, trace);
+            return AgentTray.RunServe((onStatus, cancel) => ServeLoop.Run(roots, shell, trace, onStatus, cancel));
+        }
 
     case "serve-tcp":
         // Serves the same AgentCore over a TCP socket, so a mock RDP server can bridge its
