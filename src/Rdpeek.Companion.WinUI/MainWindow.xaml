@@ -52,7 +52,7 @@
             </StackPanel>
         </Border>
 
-        <muxc:NavigationView Grid.Row="2"
+        <muxc:NavigationView Grid.Row="2" x:Name="Nav"
                              PaneDisplayMode="Left"
                              OpenPaneLength="190"
                              IsBackButtonVisible="Collapsed"
@@ -70,6 +70,7 @@
                 <muxc:NavigationViewItem Content="Diagnostics" Tag="diag" />
                 <muxc:NavigationViewItemHeader Content="Host (via agent)" />
                 <muxc:NavigationViewItem Content="System" Tag="system" />
+                <muxc:NavigationViewItem Content="Processes" Tag="proc" x:Name="ProcNavItem" />
                 <muxc:NavigationViewItem Content="Event Log" Tag="events" />
                 <muxc:NavigationViewItem Content="Network" Tag="net" />
                 <muxc:NavigationViewItem Content="Sessions" Tag="sess" />
@@ -143,110 +144,149 @@
                 </Grid>
 
                 <!-- ===================== DASHBOARD ===================== -->
-                <Grid x:Name="DashView" RowSpacing="10">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="170" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
+                <Grid x:Name="DashView" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="330" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
 
-                    <!-- connections -->
-                    <Border Grid.Row="0" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    <!-- LEFT: fleet rail — every connection, click to focus -->
+                    <Border Grid.Column="0" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
-                            <Grid Grid.Row="0" Padding="12,8" ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="20" />
-                                    <ColumnDefinition Width="0.26*" /><ColumnDefinition Width="0.10*" />
-                                    <ColumnDefinition Width="0.12*" /><ColumnDefinition Width="0.14*" />
-                                    <ColumnDefinition Width="0.38*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="1" Text="Host" FontWeight="SemiBold" />
-                                <TextBlock Grid.Column="2" Text="CPU" FontWeight="SemiBold" />
-                                <TextBlock Grid.Column="3" Text="RTT" FontWeight="SemiBold" />
-                                <TextBlock Grid.Column="4" Text="Rate" FontWeight="SemiBold" />
-                                <TextBlock Grid.Column="5" Text="Window" FontWeight="SemiBold" />
-                            </Grid>
+                            <TextBlock Grid.Row="0" Text="Connections" FontWeight="SemiBold" Margin="14,12,14,6" />
+                            <TextBlock Grid.Row="1" Text="No RDP connections detected." Opacity="0.6" FontSize="12" Margin="14,0"
+                                       Visibility="{x:Bind local:Ui.HiddenIfAny(Vm.Connections), Mode=OneWay}" VerticalAlignment="Top" />
                             <ListView Grid.Row="1" ItemsSource="{x:Bind Vm.Connections}"
-                                      SelectedItem="{x:Bind Vm.SelectedConnection, Mode=TwoWay}"
-                                      SelectionMode="Single">
+                                      SelectedItem="{x:Bind Vm.SelectedConnection, Mode=TwoWay}" SelectionMode="Single">
                                 <ListView.ItemContainerStyle>
                                     <Style TargetType="ListViewItem">
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                        <Setter Property="Padding" Value="12,6" />
+                                        <Setter Property="Padding" Value="10,8" />
                                         <Setter Property="MinHeight" Value="0" />
                                     </Style>
                                 </ListView.ItemContainerStyle>
                                 <ListView.ItemTemplate>
                                     <DataTemplate x:DataType="local:ConnectionRow">
-                                        <Grid ColumnSpacing="8">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="20" />
-                                                <ColumnDefinition Width="0.26*" /><ColumnDefinition Width="0.10*" />
-                                                <ColumnDefinition Width="0.12*" /><ColumnDefinition Width="0.14*" />
-                                                <ColumnDefinition Width="0.38*" />
-                                            </Grid.ColumnDefinitions>
-                                            <Ellipse Grid.Column="0" Width="10" Height="10" VerticalAlignment="Center"
-                                                     Fill="{x:Bind HealthBrush, Mode=OneWay}"
-                                                     ToolTipService.ToolTip="{x:Bind HealthText, Mode=OneWay}" />
-                                            <TextBlock Grid.Column="1" Text="{x:Bind Host, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Grid.Column="2" Text="{x:Bind Cpu, Mode=OneWay}" FontFamily="Consolas" />
-                                            <TextBlock Grid.Column="3" Text="{x:Bind Rtt, Mode=OneWay}" FontFamily="Consolas" Opacity="0.85" />
-                                            <TextBlock Grid.Column="4" Text="{x:Bind Throughput, Mode=OneWay}" FontFamily="Consolas" Opacity="0.85" />
-                                            <TextBlock Grid.Column="5" Text="{x:Bind Window, Mode=OneWay}" TextTrimming="CharacterEllipsis" Opacity="0.7" />
-                                        </Grid>
+                                        <StackPanel Spacing="4">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <Ellipse Width="10" Height="10" VerticalAlignment="Center"
+                                                         Fill="{x:Bind HealthBrush, Mode=OneWay}"
+                                                         ToolTipService.ToolTip="{x:Bind HealthText, Mode=OneWay}" />
+                                                <TextBlock Text="{x:Bind Tag}" FontWeight="SemiBold"
+                                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                                <TextBlock Text="{x:Bind Host, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                            <TextBlock Text="{x:Bind Window, Mode=OneWay}" FontSize="11" Opacity="0.6" TextTrimming="CharacterEllipsis" />
+                                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                                <TextBlock Text="{x:Bind Cpu, Mode=OneWay}" FontFamily="Consolas" FontSize="12" Opacity="0.85" />
+                                                <TextBlock Text="{x:Bind Rtt, Mode=OneWay}" FontFamily="Consolas" FontSize="12" Opacity="0.85" />
+                                                <TextBlock Text="{x:Bind Throughput, Mode=OneWay}" FontFamily="Consolas" FontSize="12" Opacity="0.85" />
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{x:Bind ClientBrush, Mode=OneWay}"
+                                                         ToolTipService.ToolTip="{x:Bind ClientText, Mode=OneWay}" />
+                                                <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{x:Bind ServerBrush, Mode=OneWay}"
+                                                         ToolTipService.ToolTip="{x:Bind ServerText, Mode=OneWay}" />
+                                                <TextBlock Text="client · agent" FontSize="10" Opacity="0.5" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </StackPanel>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
                             </ListView>
                         </Grid>
                     </Border>
 
-                    <!-- host header + perf strip -->
-                    <Border Grid.Row="1" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                            CornerRadius="8" Padding="14,10">
-                        <StackPanel Spacing="6">
-                            <TextBlock Text="{x:Bind Vm.HostHeader, Mode=OneWay}" TextWrapping="Wrap"
-                                       FontFamily="Consolas" LineHeight="20" />
-                            <TextBlock Text="{x:Bind Vm.PerfText, Mode=OneWay}" TextWrapping="Wrap"
-                                       FontFamily="Consolas" Opacity="0.85" />
+                    <!-- RIGHT: selected-host vitals -->
+                    <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="12">
+
+                            <!-- host identity -->
+                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="14,10">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="{x:Bind Vm.HostHeader, Mode=OneWay}" TextWrapping="Wrap" FontFamily="Consolas" LineHeight="20" />
+                                    <TextBlock Text="{x:Bind Vm.PerfText, Mode=OneWay}" TextWrapping="Wrap" FontFamily="Consolas" Opacity="0.85"
+                                               Visibility="{x:Bind local:Ui.VisibleIfText(Vm.PerfText), Mode=OneWay}" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- KPI tiles -->
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="14,12">
+                                    <StackPanel Spacing="4"><TextBlock Text="CPU" FontSize="12" Opacity="0.6" /><TextBlock Text="{x:Bind Vm.CpuSparkLabel, Mode=OneWay}" FontFamily="Consolas" FontSize="24" FontWeight="SemiBold" /></StackPanel>
+                                </Border>
+                                <Border Grid.Column="1" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="14,12">
+                                    <StackPanel Spacing="4"><TextBlock Text="Client RTT" FontSize="12" Opacity="0.6" /><TextBlock Text="{x:Bind Vm.RttSparkLabel, Mode=OneWay}" FontFamily="Consolas" FontSize="24" FontWeight="SemiBold" /></StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="14,12">
+                                    <StackPanel Spacing="4"><TextBlock Text="DVC throughput" FontSize="12" Opacity="0.6" /><TextBlock Text="{x:Bind Vm.TputSparkLabel, Mode=OneWay}" FontFamily="Consolas" FontSize="24" FontWeight="SemiBold" /></StackPanel>
+                                </Border>
+                                <Border Grid.Column="3" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="14,12">
+                                    <StackPanel Spacing="4"><TextBlock Text="Health" FontSize="12" Opacity="0.6" />
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Ellipse Width="14" Height="14" VerticalAlignment="Center" Fill="{x:Bind Vm.SelectedHealthBrush, Mode=OneWay}" />
+                                            <TextBlock Text="{x:Bind Vm.SelectedHealthText, Mode=OneWay}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
 
                             <!-- live trends (1s samples) -->
-                            <StackPanel Orientation="Horizontal" Spacing="24" Margin="0,4,0,0">
-                                <StackPanel Spacing="1">
-                                    <TextBlock Text="CPU" FontSize="11" Opacity="0.55" />
-                                    <TextBlock Text="{x:Bind Vm.CpuSparkLabel, Mode=OneWay}" FontFamily="Consolas" FontSize="14" />
-                                    <Grid Width="130" Height="30">
-                                        <Polyline Points="{x:Bind Vm.CpuSpark, Mode=OneWay}" StrokeThickness="1.5" StrokeLineJoin="Round"
-                                                  Stroke="{ThemeResource SystemFillColorSuccessBrush}" />
-                                    </Grid>
-                                </StackPanel>
-                                <StackPanel Spacing="1">
-                                    <TextBlock Text="Client RTT" FontSize="11" Opacity="0.55" />
-                                    <TextBlock Text="{x:Bind Vm.RttSparkLabel, Mode=OneWay}" FontFamily="Consolas" FontSize="14" />
-                                    <Grid Width="130" Height="30">
-                                        <Polyline Points="{x:Bind Vm.RttSpark, Mode=OneWay}" StrokeThickness="1.5" StrokeLineJoin="Round"
-                                                  Stroke="{ThemeResource AccentFillColorDefaultBrush}" />
-                                    </Grid>
-                                </StackPanel>
-                                <StackPanel Spacing="1">
-                                    <TextBlock Text="DVC throughput" FontSize="11" Opacity="0.55" />
-                                    <TextBlock Text="{x:Bind Vm.TputSparkLabel, Mode=OneWay}" FontFamily="Consolas" FontSize="14" />
-                                    <Grid Width="130" Height="30">
-                                        <Polyline Points="{x:Bind Vm.TputSpark, Mode=OneWay}" StrokeThickness="1.5" StrokeLineJoin="Round"
-                                                  Stroke="{ThemeResource SystemFillColorCautionBrush}" />
-                                    </Grid>
-                                </StackPanel>
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="14,10">
+                                    <StackPanel Spacing="6"><TextBlock Text="CPU %" FontSize="11" Opacity="0.55" /><Grid Height="40"><Polyline Points="{x:Bind Vm.CpuSpark, Mode=OneWay}" StrokeThickness="1.5" StrokeLineJoin="Round" Stroke="{ThemeResource SystemFillColorSuccessBrush}" /></Grid></StackPanel>
+                                </Border>
+                                <Border Grid.Column="1" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="14,10">
+                                    <StackPanel Spacing="6"><TextBlock Text="Client RTT ms" FontSize="11" Opacity="0.55" /><Grid Height="40"><Polyline Points="{x:Bind Vm.RttSpark, Mode=OneWay}" StrokeThickness="1.5" StrokeLineJoin="Round" Stroke="{ThemeResource AccentFillColorDefaultBrush}" /></Grid></StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="14,10">
+                                    <StackPanel Spacing="6"><TextBlock Text="DVC throughput" FontSize="11" Opacity="0.55" /><Grid Height="40"><Polyline Points="{x:Bind Vm.TputSpark, Mode=OneWay}" StrokeThickness="1.5" StrokeLineJoin="Round" Stroke="{ThemeResource SystemFillColorCautionBrush}" /></Grid></StackPanel>
+                                </Border>
+                            </Grid>
 
-                    <!-- processes -->
-                    <Border Grid.Row="2" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            <!-- top processes (full list on the Processes tab) -->
+                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                                <StackPanel>
+                                    <Grid Padding="14,10,14,6">
+                                        <TextBlock Text="Top processes" FontWeight="SemiBold" />
+                                        <HyperlinkButton Content="Full list →" Click="OnFullProcesses" Padding="0" HorizontalAlignment="Right" />
+                                    </Grid>
+                                    <ItemsControl ItemsSource="{x:Bind Vm.TopProcesses}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="local:ProcRow">
+                                                <Grid ColumnSpacing="8" Padding="14,4">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" /><ColumnDefinition Width="0.30*" /><ColumnDefinition Width="90" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{x:Bind Image}" FontFamily="Consolas" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Grid.Column="1" Text="{x:Bind User}" Opacity="0.7" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Grid.Column="2" Text="{x:Bind Mem}" FontFamily="Consolas" Opacity="0.85" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- ===================== PROCESSES ===================== -->
+                <Grid x:Name="ProcView" Visibility="Collapsed">
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
                         <Grid>
                             <Grid.RowDefinitions>

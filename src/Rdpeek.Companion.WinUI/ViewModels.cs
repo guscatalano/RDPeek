@@ -215,6 +215,9 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<ConnectionRow> Connections { get; } = new();
     private int _nextOrdinal = 1;   // hands out stable per-session numbers
     public ObservableCollection<ProcRow> Processes { get; } = new();
+    public ObservableCollection<ProcRow> TopProcesses { get; } = new();   // top 5, for the Overview
+    [ObservableProperty] private string _selectedHealthText = "—";
+    [ObservableProperty] private Brush _selectedHealthBrush = UiBrushes.Muted;
     public ObservableCollection<ChannelRow> Channels { get; } = new();
     public ObservableCollection<NetRow> Network { get; } = new();
     public ObservableCollection<SessionRow> Sessions { get; } = new();
@@ -1432,9 +1435,18 @@ public partial class MainViewModel : ObservableObject
         }
 
         Processes.Clear();
+        TopProcesses.Clear();
         if (st?.Procs is { } p)
             foreach (var proc in p.Processes.OrderByDescending(x => x.WorkingSet).Take(200))
-                Processes.Add(new ProcRow(proc.Pid, proc.ImageName, proc.UserName, $"{proc.WorkingSet / 1024 / 1024} MB"));
+            {
+                var row = new ProcRow(proc.Pid, proc.ImageName, proc.UserName, $"{proc.WorkingSet / 1024 / 1024} MB");
+                Processes.Add(row);
+                if (TopProcesses.Count < 5) TopProcesses.Add(row);   // Overview shows the top 5; full list on the Processes tab
+            }
+
+        // Selected-connection health for the Overview KPI tile.
+        SelectedHealthText = SelectedConnection?.HealthText is { Length: > 0 } ht ? ht : (st is null ? "no agent" : "—");
+        SelectedHealthBrush = SelectedConnection?.HealthBrush ?? UiBrushes.Muted;
 
         Network.Clear();
         if (st?.Net is { } net)

@@ -73,10 +73,13 @@ public sealed partial class MainWindow : Window
         FramesView.Visibility = tag == "frames" ? Visibility.Visible : Visibility.Collapsed;
         DiagView.Visibility = tag == "diag" ? Visibility.Visible : Visibility.Collapsed;
         SysView.Visibility = tag == "system" ? Visibility.Visible : Visibility.Collapsed;
+        ProcView.Visibility = tag == "proc" ? Visibility.Visible : Visibility.Collapsed;
         EventsView.Visibility = tag == "events" ? Visibility.Visible : Visibility.Collapsed;
         ShellView.Visibility = tag == "shell" ? Visibility.Visible : Visibility.Collapsed;
         WindowView.Visibility = tag == "window" ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    private void OnFullProcesses(object sender, RoutedEventArgs e) => Nav.SelectedItem = ProcNavItem;
 
     private void OnEntryClick(object sender, ItemClickEventArgs e)
     {
