@@ -22,9 +22,12 @@ internal sealed class InspectorPlugin : IWTSPlugin
     private IWTSVirtualChannelManager? _manager;
     private IWTSListener? _listener;
 
+    private bool _terminated;
+
     public int Initialize(IWTSVirtualChannelManager pChannelMgr)
     {
         Logger.Log("IWTSPlugin.Initialize");
+        PluginHost.PluginActivated();   // keep the shared server alive while this connection lives
         _manager = pChannelMgr;
 
         // Initialize is a per-connection COM call marshaled from the RDP client (mstsc/msrdc). Grab the
@@ -88,8 +91,12 @@ internal sealed class InspectorPlugin : IWTSPlugin
     public int Terminated()
     {
         Logger.Log("IWTSPlugin.Terminated");
+        if (_terminated) return 0;   // guard against a double callback skewing the ref count
+        _terminated = true;
         Broker.Report("gone", Environment.ProcessId, _seq);
-        PluginHost.Shutdown.Set();
+        // Only the LAST live connection shutting down exits the shared server — otherwise ending one
+        // session would kill the plugin for every other still-open connection.
+        PluginHost.PluginTerminated();
         return 0;
     }
 }
