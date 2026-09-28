@@ -13,28 +13,45 @@
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="RDPeek Companion">
-        <!-- Companion exe + both client plugins (rdpeek-plugin.exe, rdpeek-window-plugin.dll) are
-             staged into the publish folder by CI, so this installs all three. -->
+        <!-- Companion app files (bindpath 'pub' holds the companion only — the plugins are staged into a
+             separate 'plugins' bindpath and installed into a per-version subfolder below, so an upgrade
+             never has to overwrite a plugin that mstsc/msrdc still has loaded: the registration repoints
+             to the new version and the next RDP connection picks it up (no reboot, no forced close). -->
         <Files Include="!(bindpath.pub)\**" />
 
         <!-- Register the client plugins so mstsc loads them — no register.ps1 needed. Machine-wide
-             (HKLM, 64-bit) since this is a perMachine install; mstsc reads AddIns from HKLM too. -->
+             (HKLM, 64-bit) since this is a perMachine install; mstsc reads AddIns from HKLM too.
+             Values point at the versioned folder [PluginVerDir]; on upgrade this component (fixed GUID)
+             is rewritten to the new version's path. -->
         <Component Id="PluginRegistration" Bitness="always64" Guid="67bc7bad-3d72-4e71-a5d6-b390c10e67c7">
           <!-- diag plugin: out-of-process COM (LocalServer32) + AddIn. The path MUST be quoted — COM
                appends " -Embedding" and CreateProcess would otherwise split "C:\Program Files\..." at
                the space and fail to launch the plugin. -->
           <RegistryValue Root="HKLM" Key="Software\Classes\CLSID\{7B6D1E44-9C1A-4C7E-9E2B-11A0C0FFEE01}\LocalServer32"
-                         Value="&quot;[INSTALLFOLDER]rdpeek-plugin.exe&quot;" Type="string" />
+                         Value="&quot;[PluginVerDir]rdpeek-plugin.exe&quot;" Type="string" />
           <RegistryValue Root="HKLM" Key="Software\Microsoft\Terminal Server Client\Default\AddIns\RDPeek"
                          Name="Name" Value="{7B6D1E44-9C1A-4C7E-9E2B-11A0C0FFEE01}" Type="string" KeyPath="yes" />
           <!-- window plugin: in-process COM (InProcServer32) + AddIn -->
           <RegistryValue Root="HKLM" Key="Software\Classes\CLSID\{7B6D1E44-9C1A-4C7E-9E2B-11A0C0FFEE03}\InProcServer32"
-                         Value="[INSTALLFOLDER]rdpeek-window-plugin.dll" Type="string" />
+                         Value="[PluginVerDir]rdpeek-window-plugin.dll" Type="string" />
           <RegistryValue Root="HKLM" Key="Software\Classes\CLSID\{7B6D1E44-9C1A-4C7E-9E2B-11A0C0FFEE03}\InProcServer32"
                          Name="ThreadingModel" Value="Both" Type="string" />
           <RegistryValue Root="HKLM" Key="Software\Microsoft\Terminal Server Client\Default\AddIns\RDPeekWindow"
                          Name="Name" Value="{7B6D1E44-9C1A-4C7E-9E2B-11A0C0FFEE03}" Type="string" />
         </Component>
+
+        <!-- Per-version plugin payload: …\RDPeek Companion\plugins\<version>\. A new version installs to
+             a NEW folder, so the old (possibly locked, still-loaded) files are never in the way. -->
+        <Directory Id="PluginsRoot" Name="plugins">
+          <Directory Id="PluginVerDir" Name="$(Version)">
+            <Component Id="DiagPluginFile" Bitness="always64" Guid="*">
+              <File Id="DiagPluginExe" Source="!(bindpath.plugins)\rdpeek-plugin.exe" />
+            </Component>
+            <Component Id="WinPluginFile" Bitness="always64" Guid="*">
+              <File Id="WinPluginDll" Source="!(bindpath.plugins)\rdpeek-window-plugin.dll" />
+            </Component>
+          </Directory>
+        </Directory>
       </Directory>
     </StandardDirectory>
 

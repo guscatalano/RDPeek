@@ -51,15 +51,17 @@ jobs:
         shell: pwsh
         run: Copy-Item publish/companion/Rdpeek.Companion.WinUI.exe publish/rdpeek-companion.exe
 
-      # Stage the client plugins into the MSI folder so one install registers everything (the MSI's
-      # Package.wxs writes their COM + AddIn registry). The standalone exe and MSIX stay companion-only.
+      # Stage the client plugins into their OWN folder (not publish/companion): the MSI installs them into
+      # a per-version subfolder and registers them, so an upgrade never overwrites a plugin mstsc still has
+      # loaded. The standalone exe and MSIX stay companion-only.
       - name: Stage client plugins for the MSI
         shell: pwsh
         run: |
-          dotnet publish src/Rdpeek.Plugin -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:Version=${{ steps.ver.outputs.ver }} -o publish/plugin
-          Copy-Item publish/plugin/rdpeek-plugin.exe publish/companion/
+          dotnet publish src/Rdpeek.Plugin -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:Version=${{ steps.ver.outputs.ver }} -o publish/pluginpub
           & "$env:GITHUB_WORKSPACE\src\Rdpeek.WindowPlugin\build.cmd"
-          Copy-Item src/Rdpeek.WindowPlugin/bin/rdpeek-window-plugin.dll publish/companion/
+          New-Item -ItemType Directory publish/plugins -Force | Out-Null
+          Copy-Item publish/pluginpub/rdpeek-plugin.exe publish/plugins/
+          Copy-Item src/Rdpeek.WindowPlugin/bin/rdpeek-window-plugin.dll publish/plugins/
 
       # ── Companion: MSI (WiX) ────────────────────────────────────────────
       - name: Install WiX
@@ -71,8 +73,9 @@ jobs:
       - name: Build MSI
         shell: pwsh
         run: |
-          $pub = (Resolve-Path publish/companion).Path   # absolute path so the Files glob resolves
-          wix build packaging/companion/Package.wxs -b pub="$pub" -d Version=${{ steps.ver.outputs.ver }} -o publish/rdpeek-companion.msi
+          $pub = (Resolve-Path publish/companion).Path      # companion files (bindpath 'pub')
+          $pl  = (Resolve-Path publish/plugins).Path        # versioned plugin payload (bindpath 'plugins')
+          wix build packaging/companion/Package.wxs -b pub="$pub" -b plugins="$pl" -d Version=${{ steps.ver.outputs.ver }} -o publish/rdpeek-companion.msi
           $size = (Get-Item publish/rdpeek-companion.msi).Length
           "MSI size: $size"
           if ($size -lt 5MB) { throw "MSI is $size bytes — payload missing (bindpath glob matched nothing)" }
