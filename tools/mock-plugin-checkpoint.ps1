@@ -79,9 +79,17 @@ try {
     for ($i = 0; $i -lt 40 -and -not (Test-Path $certOut); $i++) { Start-Sleep -Milliseconds 100 }
     if (-not (Test-Path $certOut)) { throw "mock did not export its cert to $certOut." }
 
-    # 5. Trust that exact cert so the headless control connects without a prompt.
-    $imported = Import-Certificate -FilePath $certOut -CertStoreLocation Cert:\CurrentUser\Root
-    $trustedThumb = $imported.Thumbprint
+    # 5. Trust that exact cert so the headless control connects without a prompt. NB: Import-Certificate
+    #    into Cert:\CurrentUser\Root pops a Win32 trust-confirmation dialog ("Do you want to install this
+    #    certificate?") that blocks forever on a headless runner — confirmed by a captured hang dump
+    #    (ImportCertificateCommand.ProcessRecord stuck). The raw X509Store API adds it silently, and
+    #    mirrors the removal in the finally block below.
+    $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certOut)
+    $rootStore = [System.Security.Cryptography.X509Certificates.X509Store]::new('Root', 'CurrentUser')
+    $rootStore.Open('ReadWrite')
+    $rootStore.Add($cert)
+    $rootStore.Close()
+    $trustedThumb = $cert.Thumbprint
     Write-Host "Trusted mock cert $trustedThumb (CurrentUser\Root, removed on exit)." -ForegroundColor DarkGray
 
     # 6. Load the plugin via the shim over a headless connection. The hosted mstscax control has been
