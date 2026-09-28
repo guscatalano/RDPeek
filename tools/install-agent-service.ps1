@@ -25,7 +25,9 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)] [string] $ServiceExePath,
+    # Defaults to the exe next to this script — so the released server bundle (exe + script together)
+    # installs with no arguments. Pass a path when the script and exe live apart.
+    [string] $ServiceExePath = (Join-Path $PSScriptRoot 'rdpeek-agent-service.exe'),
     [string] $AgentExePath,
     [string] $ServiceName = 'RdpeekAgentSvc'
 )

@@ -126,6 +126,12 @@ jobs:
           -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
           -o publish/agent
 
+      - name: Publish rdpeek-agent-service
+        run: >
+          dotnet publish src/Rdpeek.AgentService -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -o publish/agentservice
+
       # The installer + its native shim (rdpeek-vc-shim.dll, built by the Bootstrap's MSBuild
       # target). windows-latest has the VS C++ tools the shim needs. The shim stays a loose DLL
       # beside the exe (the RDP control loads it by path), so it is not bundled into the single file.
@@ -142,6 +148,7 @@ jobs:
           path: |
             publish/doctor/rdpeek-doctor.exe
             publish/agent/rdpeek-agent.exe
+            publish/agentservice/rdpeek-agent-service.exe
             publish/bootstrap/rdpeek-bootstrap.exe
             publish/bootstrap/rdpeek-vc-shim.dll
           if-no-files-found: error

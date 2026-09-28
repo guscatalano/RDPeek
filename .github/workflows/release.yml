@@ -105,11 +105,24 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "signtool failed" }
           Remove-Item "Cert:\CurrentUser\My\$($cert.Thumbprint)" -ErrorAction SilentlyContinue
 
-      # ── agent / doctor / bootstrap ──────────────────────────────────────
-      - name: Publish agent + doctor
+      # ── agent / service / doctor / bootstrap ────────────────────────────
+      - name: Publish agent + service + doctor
         run: |
-          dotnet publish src/Rdpeek.Agent  -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ steps.ver.outputs.ver }} -o publish/agent
-          dotnet publish src/Rdpeek.Doctor -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ steps.ver.outputs.ver }} -o publish/doctor
+          dotnet publish src/Rdpeek.Agent        -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ steps.ver.outputs.ver }} -o publish/agent
+          dotnet publish src/Rdpeek.AgentService -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ steps.ver.outputs.ver }} -o publish/agentservice
+          dotnet publish src/Rdpeek.Doctor       -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ steps.ver.outputs.ver }} -o publish/doctor
+      # One download for the server side: the agent, the optional supervisor service, and the install
+      # scripts co-located (the service resolves the agent next to its own exe, so install just works).
+      - name: Bundle server install (agent + service + scripts)
+        shell: pwsh
+        run: |
+          $b = 'publish/agent-server'
+          New-Item -ItemType Directory -Force $b | Out-Null
+          Copy-Item publish/agent/rdpeek-agent.exe                 $b
+          Copy-Item publish/agentservice/rdpeek-agent-service.exe  $b
+          Copy-Item tools/install-agent-service.ps1                $b
+          Copy-Item tools/uninstall-agent-service.ps1              $b
+          Compress-Archive -Path "$b/*" -DestinationPath publish/rdpeek-agent-server-win-x64.zip -Force
       - name: Publish bootstrap (+ vc-shim)
         run: dotnet publish src/Rdpeek.Bootstrap -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/bootstrap
       - name: Bundle bootstrap (exe + shim) as a zip
@@ -128,6 +141,8 @@ jobs:
             'publish/rdpeek-companion.msix',
             'publish/rdpeek-companion-msix.cer',
             'publish/agent/rdpeek-agent.exe',
+            'publish/agentservice/rdpeek-agent-service.exe',
+            'publish/rdpeek-agent-server-win-x64.zip',
             'publish/doctor/rdpeek-doctor.exe',
             'publish/rdpeek-bootstrap-win-x64.zip'
           )
