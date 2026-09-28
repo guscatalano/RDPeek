@@ -23,7 +23,9 @@ param(
     [int]    $Port = 33895,
     [ValidateSet('auto', 'build', 'download')]
     [string] $MockSource = 'auto',
-    [int]    $HoldSeconds = 15
+    [int]    $HoldSeconds = 15,
+    # Where a hang dump + managed stacks land if the bootstrap fails to self-terminate. CI uploads this.
+    [string] $DumpDir = (Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..')) 'hang-artifacts')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -31,9 +33,12 @@ $repo      = Resolve-Path (Join-Path $PSScriptRoot '..')
 $pluginLog = Join-Path $env:TEMP 'rdpeek-plugin.log'
 $mockLog   = Join-Path $env:TEMP ("rdpeek-mock-{0}.log" -f (Get-Random))
 $certOut   = Join-Path $env:TEMP ("rdpeek-mock-{0}.cer" -f (Get-Random))
+$bootOut   = Join-Path $env:TEMP 'rdpeek-bootstrap.out.log'
+$bootErr   = Join-Path $env:TEMP 'rdpeek-bootstrap.err.log'
 $mockProc  = $null
 $registered = $false
 $trustedThumb = $null
+$hung      = $false
 
 function Build-Exe([string] $project, [string] $exeName) {
     & dotnet build (Join-Path $repo $project) -c Debug --nologo | Out-Null
@@ -79,9 +84,33 @@ try {
     $trustedThumb = $imported.Thumbprint
     Write-Host "Trusted mock cert $trustedThumb (CurrentUser\Root, removed on exit)." -ForegroundColor DarkGray
 
-    # 6. Load the plugin via the shim over a headless connection.
+    # 6. Load the plugin via the shim over a headless connection. The hosted mstscax control has been
+    #    seen to not tear down headlessly, hanging CI to the 6h default. Bound the wait to
+    #    HoldSeconds + margin; on timeout, capture managed stacks + a full dump for offline debugging
+    #    (uploaded as a CI artifact from $DumpDir), then force-kill it.
     Write-Host "Connecting the bootstrap (plugin via shim) ..." -ForegroundColor Cyan
-    & $bootstrap --connect "127.0.0.1:$Port" --plugin-dll $shim --hold $HoldSeconds | Write-Host
+    $bp = Start-Process -FilePath $bootstrap -PassThru -NoNewWindow `
+        -RedirectStandardOutput $bootOut -RedirectStandardError $bootErr `
+        -ArgumentList @('--connect', "127.0.0.1:$Port", '--plugin-dll', $shim, '--hold', $HoldSeconds)
+
+    $deadlineSec = $HoldSeconds + 45
+    if (-not $bp.WaitForExit($deadlineSec * 1000)) {
+        $hung = $true
+        Write-Warning "bootstrap (pid $($bp.Id)) did not exit within ${deadlineSec}s — capturing diagnostics to $DumpDir"
+        New-Item -ItemType Directory -Force -Path $DumpDir | Out-Null
+        # Managed stacks first (fast, human-readable triage), then a full dump (native + managed).
+        try { & dotnet-stack report -p $bp.Id *> (Join-Path $DumpDir 'bootstrap-stacks.txt') }
+        catch { "dotnet-stack failed: $_" | Out-File (Join-Path $DumpDir 'bootstrap-stacks.txt') }
+        try { & dotnet-dump collect -p $bp.Id -o (Join-Path $DumpDir 'bootstrap.dmp') --type Full }
+        catch { Write-Warning "dotnet-dump failed: $_" }
+        # Snapshot the logs alongside the dump so the artifact is self-contained.
+        foreach ($f in @($pluginLog, $mockLog, $bootOut, $bootErr)) {
+            try { if (Test-Path $f) { Copy-Item $f $DumpDir -Force } } catch {}
+        }
+        try { $bp | Stop-Process -Force -ErrorAction SilentlyContinue } catch {}
+    }
+    if (Test-Path $bootOut) { Write-Host (Get-Content $bootOut -Raw) }
+    if (Test-Path $bootErr) { $e = Get-Content $bootErr -Raw; if ($e) { Write-Host "--- bootstrap stderr ---"; Write-Host $e } }
 
     # 7. Verify the plugin loaded and completed the diag handshake.
     Start-Sleep -Milliseconds 500
@@ -91,6 +120,12 @@ try {
 
     Write-Host ""
     Write-Host "plugin log : $pluginLog"
+    if ($hung) {
+        Write-Host ("FAIL - bootstrap hung; diagnostics in $DumpDir (handshake seen: accepted={0} caps={1})." -f $accepted, $caps) -ForegroundColor Red
+        Write-Host "--- plugin log ---"; Write-Host $plog
+        Write-Host "--- mock log ---";   if (Test-Path $mockLog) { Get-Content $mockLog -Raw | Write-Host }
+        exit 1
+    }
     if ($accepted -and $caps) {
         Write-Host "PASS - the shim loaded the RDPeek plugin headlessly; it accepted the DVC and got the mock's capabilities." -ForegroundColor Green
         exit 0

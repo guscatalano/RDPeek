@@ -38,3 +38,6 @@ Desktop.ini
 
 # Claude Code worktrees / local agent state
 .claude/worktrees/
+
+# CI hang dump output (mock-plugin-checkpoint.ps1)
+hang-artifacts/

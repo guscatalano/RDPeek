@@ -36,6 +36,8 @@ jobs:
     name: Plugin ↔ mock (headless DVC checkpoint)
     runs-on: windows-latest
     needs: build-test
+    # The headless bootstrap can fail to self-terminate, hanging the job to the 6h default. Fail fast.
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -47,13 +49,30 @@ jobs:
             8.0.x
             10.0.x
 
+      # .NET diagnostics tools so the checkpoint can dump the bootstrap if it hangs (see below).
+      - name: Install .NET diagnostics tools
+        shell: pwsh
+        run: |
+          dotnet tool install -g dotnet-dump
+          dotnet tool install -g dotnet-stack
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
+
       # Downloads MockRdp.exe from the mock's latest release, builds the shim (VS C++ tools are
       # present) + plugin + bootstrap, registers the plugin per-user, trusts the mock's exported
       # cert (headless → no prompt), loads the plugin via the shim over a real DVC, and asserts the
-      # plugin logged OnNewChannelConnection + the mock's diagnostics capabilities.
+      # plugin logged OnNewChannelConnection + the mock's diagnostics capabilities. If the bootstrap
+      # hangs, the script captures a full dump + managed stacks to hang-artifacts/ before failing.
       - name: Headless plugin checkpoint against the mock
         shell: pwsh
         run: ./tools/mock-plugin-checkpoint.ps1 -MockSource download -HoldSeconds 15
+
+      - name: Upload hang diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mock-hang-dump
+          path: hang-artifacts/
+          if-no-files-found: ignore
 
   publish:
     name: Publish tools (win-x64)
