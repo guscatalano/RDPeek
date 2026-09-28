@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Rdpeek.Companion.WinUI.ConnectionCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Rdpeek.Companion.WinUI"
+    x:DefaultBindMode="OneWay">
+
+    <!-- One compact per-connection status card, shared by the Overview rail and the dashboard overlay
+         so they can't drift. Bind Row to a ConnectionRow. -->
+    <StackPanel Spacing="4">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <Ellipse Width="10" Height="10" VerticalAlignment="Center"
+                     Fill="{x:Bind Row.HealthBrush}" ToolTipService.ToolTip="{x:Bind Row.HealthText}" />
+            <TextBlock Text="{x:Bind Row.Tag}" FontWeight="SemiBold"
+                       Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+            <TextBlock Text="{x:Bind Row.Host}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+        <TextBlock Text="{x:Bind Row.Window}" FontSize="11" Opacity="0.6" TextTrimming="CharacterEllipsis" />
+        <StackPanel Orientation="Horizontal" Spacing="12">
+            <TextBlock Text="{x:Bind Row.Cpu}" FontFamily="Consolas" FontSize="12" Opacity="0.85" />
+            <TextBlock Text="{x:Bind Row.Rtt}" FontFamily="Consolas" FontSize="12" Opacity="0.85" />
+            <TextBlock Text="{x:Bind Row.Throughput}" FontFamily="Consolas" FontSize="12" Opacity="0.85" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="6">
+            <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{x:Bind Row.ClientBrush}"
+                     ToolTipService.ToolTip="{x:Bind Row.ClientText}" />
+            <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{x:Bind Row.ServerBrush}"
+                     ToolTipService.ToolTip="{x:Bind Row.ServerText}" />
+            <TextBlock Text="client · agent" FontSize="10" Opacity="0.5" VerticalAlignment="Center" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

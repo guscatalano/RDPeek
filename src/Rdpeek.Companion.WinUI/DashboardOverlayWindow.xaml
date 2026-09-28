@@ -34,29 +34,7 @@
                             <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
                                     CornerRadius="6" Padding="12,9" Margin="0,0,0,2">
-                                <StackPanel Spacing="5">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Ellipse Width="10" Height="10" VerticalAlignment="Center" Fill="{x:Bind HealthBrush, Mode=OneWay}" />
-                                        <TextBlock Text="{x:Bind Tag}" FontWeight="SemiBold"
-                                                   Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-                                        <TextBlock Text="{x:Bind Host, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
-                                    <TextBlock Text="{x:Bind HealthText, Mode=OneWay}" FontSize="12"
-                                               Foreground="{x:Bind HealthBrush, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
-                                    <StackPanel Orientation="Horizontal" Spacing="14">
-                                        <TextBlock FontFamily="Consolas" FontSize="12" Opacity="0.8" Text="{x:Bind Cpu, Mode=OneWay}" />
-                                        <TextBlock FontFamily="Consolas" FontSize="12" Opacity="0.8" Text="{x:Bind Rtt, Mode=OneWay}" />
-                                        <TextBlock FontFamily="Consolas" FontSize="12" Opacity="0.8" Text="{x:Bind Throughput, Mode=OneWay}" />
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{x:Bind ClientBrush, Mode=OneWay}" />
-                                        <TextBlock Text="{x:Bind ClientText, Mode=OneWay}" FontSize="11" Opacity="0.8" TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{x:Bind ServerBrush, Mode=OneWay}" />
-                                        <TextBlock Text="{x:Bind ServerText, Mode=OneWay}" FontSize="11" Opacity="0.8" TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
-                                </StackPanel>
+                                <local:ConnectionCard Row="{x:Bind}" />
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>

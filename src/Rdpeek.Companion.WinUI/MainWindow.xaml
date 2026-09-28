@@ -47,7 +47,23 @@
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12,8">
             <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                 <Ellipse Width="10" Height="10" VerticalAlignment="Center" Fill="{x:Bind Vm.LivenessBrush, Mode=OneWay}" />
-                <TextBlock Text="{x:Bind Vm.ConnectionSummary, Mode=OneWay}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <!-- Persistent connection picker: which host is in focus, switchable on EVERY tab -->
+                <ComboBox ItemsSource="{x:Bind Vm.Connections}" SelectedItem="{x:Bind Vm.SelectedConnection, Mode=TwoWay}"
+                          MinWidth="220" VerticalAlignment="Center"
+                          Visibility="{x:Bind local:Ui.VisibleIfAny(Vm.Connections), Mode=OneWay}"
+                          ToolTipService.ToolTip="The connection all tabs are showing — switch focus here">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="local:ConnectionRow">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Ellipse Width="9" Height="9" VerticalAlignment="Center" Fill="{x:Bind HealthBrush, Mode=OneWay}" />
+                                <TextBlock Text="{x:Bind Tag}" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                <TextBlock Text="{x:Bind Host, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Text="{x:Bind Vm.ConnectionSummary, Mode=OneWay}" FontWeight="SemiBold" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
                 <TextBlock Text="{x:Bind Vm.Freshness, Mode=OneWay}" Opacity="0.55" VerticalAlignment="Center" />
             </StackPanel>
         </Border>
@@ -172,29 +188,7 @@
                                 </ListView.ItemContainerStyle>
                                 <ListView.ItemTemplate>
                                     <DataTemplate x:DataType="local:ConnectionRow">
-                                        <StackPanel Spacing="4">
-                                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                                <Ellipse Width="10" Height="10" VerticalAlignment="Center"
-                                                         Fill="{x:Bind HealthBrush, Mode=OneWay}"
-                                                         ToolTipService.ToolTip="{x:Bind HealthText, Mode=OneWay}" />
-                                                <TextBlock Text="{x:Bind Tag}" FontWeight="SemiBold"
-                                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-                                                <TextBlock Text="{x:Bind Host, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                            </StackPanel>
-                                            <TextBlock Text="{x:Bind Window, Mode=OneWay}" FontSize="11" Opacity="0.6" TextTrimming="CharacterEllipsis" />
-                                            <StackPanel Orientation="Horizontal" Spacing="12">
-                                                <TextBlock Text="{x:Bind Cpu, Mode=OneWay}" FontFamily="Consolas" FontSize="12" Opacity="0.85" />
-                                                <TextBlock Text="{x:Bind Rtt, Mode=OneWay}" FontFamily="Consolas" FontSize="12" Opacity="0.85" />
-                                                <TextBlock Text="{x:Bind Throughput, Mode=OneWay}" FontFamily="Consolas" FontSize="12" Opacity="0.85" />
-                                            </StackPanel>
-                                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                                <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{x:Bind ClientBrush, Mode=OneWay}"
-                                                         ToolTipService.ToolTip="{x:Bind ClientText, Mode=OneWay}" />
-                                                <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{x:Bind ServerBrush, Mode=OneWay}"
-                                                         ToolTipService.ToolTip="{x:Bind ServerText, Mode=OneWay}" />
-                                                <TextBlock Text="client · agent" FontSize="10" Opacity="0.5" VerticalAlignment="Center" />
-                                            </StackPanel>
-                                        </StackPanel>
+                                        <local:ConnectionCard Row="{x:Bind}" />
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
                             </ListView>
