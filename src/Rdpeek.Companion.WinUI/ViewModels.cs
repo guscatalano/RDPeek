@@ -99,6 +99,9 @@ public static class Ui
     public static Microsoft.UI.Xaml.Visibility VisibleIfSet(object? value) =>
         value is null ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
 
+    public static Microsoft.UI.Xaml.Visibility HiddenIfSet(object? value) =>
+        value is null ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
     public static Microsoft.UI.Xaml.Visibility VisibleIfText(string? value) =>
         string.IsNullOrEmpty(value) ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
 
@@ -413,7 +416,17 @@ public partial class MainViewModel : ObservableObject
         EventLogEntries.Clear();
         EventLogNote = "Pick a log and Refresh to read the remote Event Log.";
         ShellOutput = "";
+
+        // Live preview follows the selection: show whatever thumbnail this connection last had, and grab
+        // a fresh client-side capture (a no-op when agent live-previews are the source).
+        SelectedThumbnail = value?.Thumbnail;
+        SelectedThumbnailSource = value?.ThumbnailSource ?? "";
+        if (value is not null) CaptureThumbnail(value);
     }
+
+    // The selected connection's live preview, surfaced on the Overview.
+    [ObservableProperty] private Microsoft.UI.Xaml.Media.ImageSource? _selectedThumbnail;
+    [ObservableProperty] private string _selectedThumbnailSource = "";
 
     partial void OnRemotePathChanged(string value)
     {
@@ -905,7 +918,12 @@ public partial class MainViewModel : ObservableObject
         if (shot is { } s)
             _dispatcher.TryEnqueue(() =>
             {
-                try { row.Thumbnail = ScreenCapture.ToBitmap(s); row.ThumbnailSource = $"client · {DateTime.Now:HH:mm:ss}"; }
+                try
+                {
+                    row.Thumbnail = ScreenCapture.ToBitmap(s);
+                    row.ThumbnailSource = $"client · {DateTime.Now:HH:mm:ss}";
+                    if (ReferenceEquals(row, SelectedConnection)) { SelectedThumbnail = row.Thumbnail; SelectedThumbnailSource = row.ThumbnailSource; }
+                }
                 catch { }
             });
     }
@@ -957,6 +975,7 @@ public partial class MainViewModel : ObservableObject
             row.Thumbnail = bmp;
             string host = string.IsNullOrEmpty(row.Host) ? "agent" : row.Host;
             row.ThumbnailSource = $"agent · {host} · {DateTime.Now:HH:mm:ss}";
+            if (ReferenceEquals(row, SelectedConnection)) { SelectedThumbnail = row.Thumbnail; SelectedThumbnailSource = row.ThumbnailSource; }
         }
         catch { /* bad frame — skip */ }
     }

@@ -244,6 +244,29 @@
                                 </Border>
                             </Grid>
 
+                            <!-- live preview of the selected session (agent screenshot or client capture) -->
+                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                                <StackPanel>
+                                    <TextBlock Text="Live preview" FontWeight="SemiBold" Margin="14,10,14,8" />
+                                    <Grid MinHeight="200" Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                          CornerRadius="0,0,8,8">
+                                        <Image Source="{x:Bind Vm.SelectedThumbnail, Mode=OneWay}" Stretch="Uniform" MaxHeight="320"
+                                               Visibility="{x:Bind local:Ui.VisibleIfSet(Vm.SelectedThumbnail), Mode=OneWay}" />
+                                        <TextBlock Text="No preview yet — turn on Live previews in the switcher, or switch to this session."
+                                                   Opacity="0.6" FontSize="12" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="360"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   Visibility="{x:Bind local:Ui.HiddenIfSet(Vm.SelectedThumbnail), Mode=OneWay}" />
+                                        <Border VerticalAlignment="Bottom" HorizontalAlignment="Stretch" Background="#B0000000"
+                                                CornerRadius="0,0,8,8" Padding="10,3"
+                                                Visibility="{x:Bind local:Ui.VisibleIfText(Vm.SelectedThumbnailSource), Mode=OneWay}">
+                                            <TextBlock Text="{x:Bind Vm.SelectedThumbnailSource, Mode=OneWay}" FontSize="11" Foreground="White"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </Border>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
                             <!-- live trends (1s samples) -->
                             <Grid ColumnSpacing="12">
                                 <Grid.ColumnDefinitions>
