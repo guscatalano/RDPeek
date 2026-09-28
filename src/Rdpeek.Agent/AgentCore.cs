@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Dvc.Diag.Protocol;
 using Rdpeek.Protocol;
+using Rdpeek.Tracing;
 
 namespace Rdpeek.Agent;
 
@@ -21,15 +22,17 @@ internal sealed class AgentCore
     private readonly IAgentData _data;
     private readonly bool _fake;
     private readonly bool _allowShell;
+    private readonly bool _allowTrace;
     private readonly Action<string>? _onClientVersion;
 
     public AgentCore(EnvelopeRouter router, IReadOnlyList<string>? fileRoots = null, IAgentData? data = null,
-                     bool allowShell = false, Action<string>? onClientVersion = null)
+                     bool allowShell = false, bool allowTrace = false, Action<string>? onClientVersion = null)
     {
         _router = router;
         _fake = data is not null and not RealAgentData;
         _data = data ?? new RealAgentData(_sessionId);
         _allowShell = allowShell;
+        _allowTrace = allowTrace;
         _onClientVersion = onClientVersion;
         _fileRoots = fileRoots ?? Array.Empty<string>();
         // File PULL is served from within the advertised roots only (read-only). No roots => the
@@ -114,6 +117,10 @@ internal sealed class AgentCore
                         env.RequestId));
                     break;
 
+                case Envelope.BodyOneofCase.TraceStartRequest:
+                    HandleTrace(env);
+                    break;
+
                 // Periodic pushes aren't wired yet: any interval is answered one-shot,
                 // which is what the polling viewer asks for.
                 case Envelope.BodyOneofCase.CounterSubscribe:
@@ -145,6 +152,76 @@ internal sealed class AgentCore
         }
     }
 
+    /// <summary>
+    /// DVC-triggered server-side trace. Gated: refuses cleanly unless the agent was started with
+    /// --allow-trace. The capture blocks for its duration, so it runs on a worker; the .zip is written
+    /// into the first advertised file_root so the client can pull it back over dvc::diag::files with the
+    /// existing FilePull path. ETW needs Administrator — an unelevated agent answers ok=false with a
+    /// reason rather than an empty trace.
+    /// </summary>
+    private void HandleTrace(Envelope env)
+    {
+        if (!_allowTrace)
+        {
+            _ = _router.RespondAsync(new Envelope
+            {
+                TraceResult = new TraceResult { Allowed = false, Ok = false, Note = "Trace is disabled. Start the agent with --allow-trace to enable it." },
+            }, env.RequestId);
+            return;
+        }
+
+        // Deliver via FilePull, which is confined to the advertised roots — no roots means nowhere to
+        // drop the package the client can reach.
+        string? outDir = _fileRoots.Count > 0 ? _fileRoots[0] : null;
+        var reqId = env.RequestId;
+        var req = env.TraceStartRequest;
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                if (outDir is null)
+                {
+                    return _router.RespondAsync(new Envelope
+                    {
+                        TraceResult = new TraceResult { Allowed = true, Ok = false, Note = "No file root advertised, so the package can't be delivered. Start the agent with a --file-root." },
+                    }, reqId);
+                }
+
+                var opts = new TraceRunOptions
+                {
+                    Seconds = (int)req.Seconds == 0 ? 20 : (int)req.Seconds,
+                    ProvidersSpec = req.Providers,
+                    OutputDirectory = outDir,
+                    SessionId = (int)_sessionId,
+                };
+                opts.Notes.Add("captured via DVC trigger (rdpeek client)");
+
+                var result = TraceRunner.RunAndPackage(TraceSide.Server, opts, log: m => Logger.Log($"trace: {m}"));
+                return _router.RespondAsync(new Envelope
+                {
+                    TraceResult = new TraceResult
+                    {
+                        Allowed = true,
+                        Ok = result.Ok,
+                        PackagePath = result.PackagePath,
+                        PackageSize = (ulong)Math.Max(0, result.PackageSize),
+                        MetadataJson = result.Metadata?.ToJson() ?? "",
+                        Note = result.Note,
+                    },
+                }, reqId);
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"trace handler error: {ex}");
+                return _router.RespondAsync(new Envelope
+                {
+                    TraceResult = new TraceResult { Allowed = true, Ok = false, Note = ex.Message },
+                }, reqId);
+            }
+        });
+    }
+
     private Capabilities Capabilities()
     {
         var caps = new Capabilities
@@ -160,6 +237,8 @@ internal sealed class AgentCore
             SystemDetail = true,                 // build / updates / drivers / PnP (read-only)
             Shell = _allowShell,                 // off unless the agent opted in with --allow-shell
             Screenshot = true,                   // session-desktop capture for live thumbnails
+            Trace = _allowTrace,                 // ETW trace capture — off unless --allow-trace
+
             MaxChunkBytes = 256 * 1024,
         };
         caps.FileRoots.AddRange(_fileRoots);

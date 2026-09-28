@@ -14,6 +14,7 @@ internal static class ServeLoop
     private const string InspectorChannel = "dvc::diag::inspector";
     private static IReadOnlyList<string> _fileRoots = Array.Empty<string>();
     private static bool _allowShell;
+    private static bool _allowTrace;
     private static int _updateTriggered;
 
     /// <summary>A client connected and advertised its version. If it's newer than this agent, pull the
@@ -28,10 +29,11 @@ internal static class ServeLoop
             Environment.Exit(0);   // new agent launched; drop this one so it takes over the channel
     }
 
-    public static int Run(IReadOnlyList<string> fileRoots, bool allowShell = false)
+    public static int Run(IReadOnlyList<string> fileRoots, bool allowShell = false, bool allowTrace = false)
     {
         _fileRoots = fileRoots;
         _allowShell = allowShell;
+        _allowTrace = allowTrace;
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             Logger.Log($"UNHANDLED: {e.ExceptionObject}");
 
@@ -100,7 +102,7 @@ internal static class ServeLoop
             WtsChannel.WriteFrame(h, Frame.Encode(env)); // raw — client's DVC layer delivers as-is
             return Task.CompletedTask;
         });
-        _ = new AgentCore(router, _fileRoots, allowShell: _allowShell, onClientVersion: OnClientVersion);
+        _ = new AgentCore(router, _fileRoots, allowShell: _allowShell, allowTrace: _allowTrace, onClientVersion: OnClientVersion);
 
         var buffer = new byte[64 * 1024];
         while (!stop.IsSet)

@@ -94,6 +94,10 @@ message Envelope {
 
     ScreenshotRequest   screenshot_request    = 84;
     Screenshot          screenshot            = 85;
+
+    // -- ETW trace capture (OFF by default; agent must be started with --allow-trace) --
+    TraceStartRequest   trace_start_request   = 86;
+    TraceResult         trace_result          = 87;
   }
 }
 
@@ -293,6 +297,7 @@ message Capabilities {
   bool   system_detail    = 16;  // build / updates / drivers / PnP devices (read-only)
   bool   shell            = 17;  // interactive command execution — off unless --allow-shell
   bool   screenshot       = 18;  // capture the session desktop as a JPEG (for live thumbnails)
+  bool   trace            = 19;  // ETW trace capture (packaged .etl) — off unless --allow-trace
 
   // File transfer is confined to these roots (empty => file transfer disabled
   // regardless of file_pull/file_push). Paths outside are rejected by the agent.
@@ -543,4 +548,25 @@ message Screenshot {
   uint32 width  = 2;
   uint32 height = 3;
   string note   = 4;   // non-empty on failure (e.g. no desktop available)
+}
+
+// ── ETW trace capture ───────────────────────────────────────────────────────
+// Capability-gated (Capabilities.trace), OFF unless the agent was started with
+// --allow-trace. The agent captures a server-side .etl inside the session, packages
+// it (.etl + metadata.json) into a .zip under a file_root, and returns the package
+// path. The client then pulls that .zip over dvc::diag::files with the existing
+// FilePull path — no new bulk transport. ETW needs Administrator on the session host;
+// an unelevated agent answers with ok=false and a reason rather than an empty trace.
+message TraceStartRequest {
+  uint32 seconds   = 1;   // capture duration; agent clamps (see TraceRunOptions)
+  string providers = 2;   // optional provider spec; empty => server defaults
+}
+
+message TraceResult {
+  bool   allowed       = 1;   // false unless the agent was started with --allow-trace
+  bool   ok            = 2;   // capture + packaging succeeded
+  string package_path  = 3;   // agent-side path (under a file_root); pull it over dvc::diag::files
+  uint64 package_size  = 4;   // bytes
+  string metadata_json = 5;   // the manifest embedded in the package (for a quick preview)
+  string note          = 6;   // status / failure reason (e.g. "needs Administrator")
 }

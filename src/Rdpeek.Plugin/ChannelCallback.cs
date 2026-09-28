@@ -86,6 +86,76 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
             int w = int.TryParse(cmd.payload, out var mw) ? Math.Clamp(mw, 64, 1920) : 480;
             _ = RunScreenshotAsync(w);
         }
+        else if (cmd.kind == "trace")
+        {
+            // payload: seconds \t providers \t localDest  (providers may be empty)
+            var parts = cmd.payload.Split('\t');
+            int secs = parts.Length > 0 && int.TryParse(parts[0], out var s) ? s : 20;
+            string providers = parts.Length > 1 ? parts[1] : "";
+            string localDest = parts.Length > 2 ? parts[2] : "";
+            _ = RunTraceAsync(secs, providers, localDest);
+        }
+    }
+
+    /// <summary>Ask the agent to capture a server-side ETW trace, then pull the resulting package back
+    /// over the files channel and save it locally. Progress and completion are relayed over the broker
+    /// as "traceprogress"/"tracedone" (mirroring the file-pull events the companion already listens to).</summary>
+    private async Task RunTraceAsync(int seconds, string providers, string localDest)
+    {
+        try
+        {
+            Broker.Send(Broker.Format("traceprogress", Environment.ProcessId, _seq, "requesting trace on the session host…"));
+            var reply = await _router.RequestAsync(new Envelope
+            {
+                TraceStartRequest = new TraceStartRequest { Seconds = (uint)Math.Max(0, seconds), Providers = providers ?? "" },
+            }, _cts.Token);
+
+            if (reply.BodyCase != Envelope.BodyOneofCase.TraceResult)
+            {
+                Broker.Send(Broker.Format("tracedone", Environment.ProcessId, _seq, $"0\t\t{localDest}\tunexpected reply {reply.BodyCase}"));
+                return;
+            }
+
+            var tr = reply.TraceResult;
+            if (!tr.Allowed) { Broker.Send(Broker.Format("tracedone", Environment.ProcessId, _seq, $"0\t\t{localDest}\t{tr.Note}")); return; }
+            if (!tr.Ok || string.IsNullOrEmpty(tr.PackagePath))
+            {
+                Broker.Send(Broker.Format("tracedone", Environment.ProcessId, _seq, $"0\t\t{localDest}\t{tr.Note}"));
+                return;
+            }
+
+            // Default the local destination to Downloads with the package's own name.
+            if (string.IsNullOrWhiteSpace(localDest))
+            {
+                string leaf = Path.GetFileName(tr.PackagePath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar));
+                if (string.IsNullOrWhiteSpace(leaf)) leaf = $"rdpeek-trace-{DateTime.Now:yyyyMMdd-HHmmss}.zip";
+                localDest = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", leaf);
+            }
+
+            Broker.Send(Broker.Format("traceprogress", Environment.ProcessId, _seq, $"pulling {tr.PackageSize:N0}-byte package…"));
+
+            ulong tid = (ulong)Interlocked.Increment(ref _nextTid);
+            var dir = Path.GetDirectoryName(localDest);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            using (var dest = new FileStream(localDest, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                var receiver = new FilePullReceiver(_router, tid, dest);
+                var result = await receiver.RunAsync(tr.PackagePath, _cts.Token);
+                if (!result.Ok)
+                {
+                    Broker.Send(Broker.Format("tracedone", Environment.ProcessId, _seq, $"0\t\t{localDest}\t{result.Message}"));
+                    return;
+                }
+            }
+
+            Broker.Send(Broker.Format("tracedone", Environment.ProcessId, _seq, $"1\t{tr.PackageSize}\t{localDest}\t{tr.Note}"));
+            Logger.Log($"trace pulled: {localDest} ({tr.PackageSize} bytes)");
+        }
+        catch (Exception ex)
+        {
+            Broker.Send(Broker.Format("tracedone", Environment.ProcessId, _seq, $"0\t\t{localDest}\t{ex.Message}"));
+            Logger.Log($"trace failed: {ex.Message}");
+        }
     }
 
     /// <summary>Ask the agent for a JPEG of its session desktop and relay it (base64, since the broker
@@ -418,6 +488,7 @@ internal sealed class ChannelCallback : IWTSVirtualChannelCallback
                 var flags = new List<string>();
                 if (caps.Capabilities.Shell) flags.Add("shell");
                 if (caps.Capabilities.Screenshot) flags.Add("screenshot");
+                if (caps.Capabilities.Trace) flags.Add("trace");
                 Broker.Send(Broker.Format("caps", Environment.ProcessId, _seq, string.Join(' ', flags)));
             }
             else

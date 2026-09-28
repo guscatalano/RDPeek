@@ -33,6 +33,7 @@ public sealed class BrokerServer : IDisposable
         public SystemDetail? System;
         public bool ShellAllowed;
         public bool ScreenshotAvailable;
+        public bool TraceAllowed;
     }
 
     private readonly ConcurrentDictionary<string, AgentState> _states = new();
@@ -67,6 +68,10 @@ public sealed class BrokerServer : IDisposable
     /// <summary>Raised (background thread) with a session screenshot: pid identifies the connection,
     /// payload is "width \t height \t base64-jpeg".</summary>
     public event Action<int, string>? ScreenshotUpdate;
+
+    /// <summary>Raised (background thread) for a server-side trace: kind is "traceprogress" (status text)
+    /// or "tracedone" (tab-separated: ok \t bytes \t localPath \t note).</summary>
+    public event Action<string, string>? TraceUpdate;
 
     public IReadOnlyList<AgentState> Snapshot() => _states.Values.ToList();
 
@@ -182,6 +187,12 @@ public sealed class BrokerServer : IDisposable
                     continue;
                 }
 
+                if (kind is "traceprogress" or "tracedone")
+                {
+                    TraceUpdate?.Invoke(kind, payload);
+                    continue;
+                }
+
                 var st = _states.GetOrAdd(key, _ => new AgentState { Pid = pid, Seq = seq });
                 switch (kind)
                 {
@@ -228,6 +239,7 @@ public sealed class BrokerServer : IDisposable
                     case "caps":
                         st.ShellAllowed = payload.Contains("shell");
                         st.ScreenshotAvailable = payload.Contains("screenshot");
+                        st.TraceAllowed = payload.Contains("trace");
                         break;
                 }
 

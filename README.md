@@ -119,6 +119,23 @@ see what this Windows build exposes:
 dotnet run --project src/Rdpeek.Doctor -- dvcprobe --discover --seconds 20
 ```
 
+Capture an **ETW trace** and auto-package it (`.etl` + `metadata.json` → shareable
+`.zip`). Both sides need **Administrator**; the server side captures on the session
+host, the client side captures locally. `--providers` overrides the default set
+(names, GUIDs or `name=guid`, comma/semicolon separated); `--out` picks the folder.
+
+```powershell
+# server side (run inside the RDP session host)
+dotnet run --project src/Rdpeek.Agent  -- trace --seconds 30
+# client side (this machine's mstsc/msrdc)
+dotnet run --project src/Rdpeek.Doctor -- trace --seconds 30
+```
+
+The agent can also be driven **over the DVC** by the Companion's "Trace server"
+action — but only when it was started with `--allow-trace` (off by default), e.g.
+`rdpeek-agent serve --allow-trace`. The package is then pulled back over the files
+channel and surfaced with a copy/open dialog, just like Export bundle.
+
 ## Layout
 
 ```

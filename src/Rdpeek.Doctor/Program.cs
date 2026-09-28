@@ -11,6 +11,9 @@ using Rdpeek.Doctor;
 //   rdpeek-doctor dvcprobe [--discover]    Opt-in client-side DVC traffic probe over
 //                                          mstsc's ETW providers. Needs Administrator.
 //     --seconds N                          Stop after N seconds (default: Ctrl+C).
+//   rdpeek-doctor trace                    Capture a client-side ETW trace and package it
+//                                          (.etl + metadata → .zip). Needs Administrator.
+//     --seconds N  --providers <spec>  --out <dir>
 //   rdpeek-doctor drivers                  Check client display drivers against RDPeek's
 //                                          known-bad list (fetched from GitHub).
 //   rdpeek-doctor update                   Check GitHub Releases for a newer RDPeek.
@@ -23,6 +26,9 @@ switch (args.Length > 0 ? args[0].ToLowerInvariant() : "")
 {
     case "dvcprobe":
         return ClientDvcProbe.Run(args.Contains("--discover", StringComparer.OrdinalIgnoreCase), seconds);
+
+    case "trace":
+        return ClientTrace.Run(args);
 
     case "windows":
         return ClientDiagnostics.ListRdpWindows();

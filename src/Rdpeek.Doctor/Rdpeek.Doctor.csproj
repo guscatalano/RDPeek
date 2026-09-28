@@ -20,6 +20,8 @@
   <ItemGroup>
     <!-- RdpWindows + BrokerServer for the headless client checks. UI-framework-free. -->
     <ProjectReference Include="..\Rdpeek.Client\Rdpeek.Client.csproj" />
+    <!-- Shared ETW capture + packaging for the client-side trace command. -->
+    <ProjectReference Include="..\Rdpeek.Tracing\Rdpeek.Tracing.csproj" />
   </ItemGroup>
 
 </Project>

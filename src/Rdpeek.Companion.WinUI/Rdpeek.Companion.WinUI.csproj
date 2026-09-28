@@ -37,6 +37,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Rdpeek.Client\Rdpeek.Client.csproj" />
     <ProjectReference Include="..\Rdpeek.Protocol\Rdpeek.Protocol.csproj" />
+    <ProjectReference Include="..\Rdpeek.Tracing\Rdpeek.Tracing.csproj" />
   </ItemGroup>
 
 </Project>
