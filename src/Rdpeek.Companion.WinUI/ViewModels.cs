@@ -60,11 +60,21 @@ public sealed record ChannelRow(string Name, string Kind, string Activation, str
 /// <summary>Cached brushes for state coloring, so records don't allocate one per row.</summary>
 internal static class UiBrushes
 {
-    public static readonly Brush Ok = new SolidColorBrush(Colors.MediumSeaGreen);
-    public static readonly Brush Info = new SolidColorBrush(Colors.CornflowerBlue);
-    public static readonly Brush Muted = new SolidColorBrush(Colors.Gray);
-    public static readonly Brush Warn = new SolidColorBrush(Colors.Goldenrod);
-    public static readonly Brush Fail = new SolidColorBrush(Colors.IndianRed);
+    // Resolve the system status brushes so dots/state adapt to light/dark/high-contrast, with a hardcoded
+    // fallback if the resource isn't available yet. (Resolved once at first use — after the app has
+    // started — so live theme switches aren't tracked, which is fine for status accents.)
+    private static Brush R(string key, Windows.UI.Color fallback)
+    {
+        try { if (Application.Current?.Resources.TryGetValue(key, out var v) == true && v is Brush b) return b; }
+        catch { }
+        return new SolidColorBrush(fallback);
+    }
+
+    public static readonly Brush Ok = R("SystemFillColorSuccessBrush", Colors.MediumSeaGreen);
+    public static readonly Brush Info = R("SystemFillColorAttentionBrush", Colors.CornflowerBlue);
+    public static readonly Brush Muted = R("TextFillColorTertiaryBrush", Colors.Gray);
+    public static readonly Brush Warn = R("SystemFillColorCautionBrush", Colors.Goldenrod);
+    public static readonly Brush Fail = R("SystemFillColorCriticalBrush", Colors.IndianRed);
 }
 
 /// <summary>x:Bind function helpers for severity → colour/glyph in the Diagnostics tab.</summary>
