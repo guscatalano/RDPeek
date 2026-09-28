@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Rdpeek.AgentService</RootNamespace>
+    <!-- rdpeek-agent-service.exe sits next to rdpeek-agent.exe; the service resolves
+         the agent by looking in its own directory first (see AgentPathResolver). -->
+    <AssemblyName>rdpeek-agent-service</AssemblyName>
+    <!-- Pinned x64 like the rest of the toolchain (mstsc/agent are x64). -->
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ServiceBase / session-change plumbing for a classic Windows Service.
+         Kept deliberately light: this is the only external dependency. -->
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.1" />
+  </ItemGroup>
+
+</Project>
