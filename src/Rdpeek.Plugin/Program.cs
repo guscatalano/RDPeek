@@ -15,7 +15,19 @@ bool embedding = args.Any(a =>
 // Built as a WinExe so mstsc's -Embedding activation shows no console window. For the dev CLI
 // subcommands, attach to the launching terminal's console so their output is still visible.
 if (embedding)
+{
+    // Keep the plugin alive no matter what the agent does (abrupt disconnect mid-frame, self-update
+    // re-exec, crash). A stray background exception must be logged, never take the server down — the
+    // listener stays up and keeps accepting the agent whenever it (re)connects.
+    AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        Logger.Log($"UNHANDLED (ignored): {e.ExceptionObject}");
+    System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, e) =>
+    {
+        Logger.Log($"unobserved task (ignored): {e.Exception.Message}");
+        e.SetObserved();
+    };
     return PluginHost.RunServer();
+}
 
 NativeConsole.AttachParent();
 
