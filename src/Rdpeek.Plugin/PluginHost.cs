@@ -19,13 +19,10 @@ internal static class PluginHost
     public static readonly ManualResetEventSlim Shutdown = new(false);
 
     // One out-of-process server (REGCLS_MULTIPLEUSE) serves EVERY RDP connection on this client, so it
-    // must not exit when a single connection ends — only when the last one does. Ref-count live plugins.
-    private static int _livePlugins;
-    public static void PluginActivated() => System.Threading.Interlocked.Increment(ref _livePlugins);
-    public static void PluginTerminated()
-    {
-        if (System.Threading.Interlocked.Decrement(ref _livePlugins) <= 0) Shutdown.Set();
-    }
+    // must not exit when a single connection ends — only when the last one does. See PluginLifetime.
+    private static readonly PluginLifetime _lifetime = new(() => Shutdown.Set());
+    public static void PluginActivated() => _lifetime.Activated();
+    public static void PluginTerminated() => _lifetime.Released();
 
     private const uint COINIT_MULTITHREADED = 0x0;
     private const uint CLSCTX_LOCAL_SERVER = 0x4;

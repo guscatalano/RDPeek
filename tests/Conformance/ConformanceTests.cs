@@ -29,6 +29,39 @@ public class ConformanceTests
     }
 
     [Fact]
+    public async Task Handshake_carries_client_version_across_the_wire()
+    {
+        // The agent self-updates when the client is newer, which relies on client_version reaching it.
+        var link = new LoopbackLink();
+        var agent = new MockAgent(link.Agent);
+
+        var reply = await link.Client.Router.RequestAsync(new Envelope
+        {
+            Hello = new Hello { ProtocolVersion = 1, ClientBuild = "rdpeek-plugin/0.9.9", ClientVersion = "0.9.9" }
+        });
+
+        Assert.Equal(Envelope.BodyOneofCase.Capabilities, reply.BodyCase);
+        Assert.Equal("0.9.9", agent.LastClientVersion);
+    }
+
+    [Fact]
+    public async Task Two_connections_handshake_independently()
+    {
+        // Multi-connection at the protocol level: each link/agent is isolated and completes its own
+        // handshake — no shared state bleeds between connections.
+        var a = new LoopbackLink(); var agentA = new MockAgent(a.Agent);
+        var b = new LoopbackLink(); var agentB = new MockAgent(b.Agent);
+
+        var ra = await a.Client.Router.RequestAsync(new Envelope { Hello = new Hello { ProtocolVersion = 1, ClientVersion = "1.0.0" } });
+        var rb = await b.Client.Router.RequestAsync(new Envelope { Hello = new Hello { ProtocolVersion = 1, ClientVersion = "2.0.0" } });
+
+        Assert.Equal(Envelope.BodyOneofCase.Capabilities, ra.BodyCase);
+        Assert.Equal(Envelope.BodyOneofCase.Capabilities, rb.BodyCase);
+        Assert.Equal("1.0.0", agentA.LastClientVersion);
+        Assert.Equal("2.0.0", agentB.LastClientVersion);
+    }
+
+    [Fact]
     public async Task SysInfo_oneshot_returns_snapshot()
     {
         var link = new LoopbackLink();

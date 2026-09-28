@@ -26,6 +26,9 @@ public sealed class MockAgent
     /// <summary>If &ge; 0, flip a byte in that chunk index during a pull (fault injection).</summary>
     public int CorruptChunkIndex { get; set; } = -1;
 
+    /// <summary>The client_version from the most recent Hello (for handshake tests).</summary>
+    public string? LastClientVersion { get; private set; }
+
     public MockAgent(DiagEndpoint endpoint)
     {
         _router = endpoint.Router;
@@ -37,6 +40,7 @@ public sealed class MockAgent
         switch (env.BodyCase)
         {
             case Envelope.BodyOneofCase.Hello:
+                LastClientVersion = env.Hello.ClientVersion;   // record so tests can assert it crossed the wire
                 _ = _router.RespondAsync(new Envelope { Capabilities = MakeCapabilities() }, env.RequestId);
                 break;
             case Envelope.BodyOneofCase.SysinfoRequest:
