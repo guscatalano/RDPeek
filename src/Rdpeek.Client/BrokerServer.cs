@@ -37,7 +37,7 @@ public sealed class BrokerServer : IDisposable
 
     private readonly ConcurrentDictionary<string, AgentState> _states = new();
     private readonly ConcurrentDictionary<int, StreamWriter> _pluginWriters = new();  // pid -> command sink
-    private readonly CancellationTokenSource _cts = new();
+    private CancellationTokenSource _cts = new();
 
     /// <summary>Raised (on a background thread) whenever a plugin reports a change.</summary>
     public event Action? Changed;
@@ -82,6 +82,18 @@ public sealed class BrokerServer : IDisposable
     }
 
     public void Start() => _ = AcceptLoopAsync(_cts.Token);
+
+    /// <summary>Rehost the pipe and drop known state so plugins reconnect from scratch — the "Reconnect"
+    /// action. Clears agent/plugin tracking; connected plugins re-announce on their heartbeat.</summary>
+    public void Restart()
+    {
+        try { _cts.Cancel(); } catch { }
+        _cts = new CancellationTokenSource();
+        _states.Clear();
+        _pluginWriters.Clear();
+        Start();
+        Changed?.Invoke();
+    }
 
     private async Task AcceptLoopAsync(CancellationToken ct)
     {

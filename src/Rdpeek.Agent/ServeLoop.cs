@@ -36,22 +36,34 @@ internal static class ServeLoop
             Logger.Log($"UNHANDLED: {e.ExceptionObject}");
 
         Logger.Log($"serve start (pid {Environment.ProcessId}, session {Environment.GetEnvironmentVariable("SESSIONNAME")})");
-        Console.WriteLine($"rdpeek-agent: serving on '{InspectorChannel}' (Ctrl+C to stop)");
+        var ver = (System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version) is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" : "?";
+        Console.WriteLine($"rdpeek-agent v{ver} — serving on '{InspectorChannel}' in session {Environment.GetEnvironmentVariable("SESSIONNAME")} (Ctrl+C to stop)");
         var stop = new ManualResetEventSlim(false);
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Set(); };
 
+        var waitingSince = DateTime.UtcNow;
+        int lastReport = -1;
         while (!stop.IsSet)
         {
             IntPtr h = WtsChannel.Open(InspectorChannel);
             if (h == IntPtr.Zero)
             {
-                // Client listener not present yet (no connection, or plugin not loaded). Retry.
+                // No client-side listener yet: either no RDP session, or the RDPeek client plugin isn't
+                // loaded on this connection. Report periodically so the window shows a live status and
+                // the cause is obvious (rather than just sitting on "serving").
+                int secs = (int)(DateTime.UtcNow - waitingSince).TotalSeconds;
+                if (secs / 5 != lastReport)
+                {
+                    lastReport = secs / 5;
+                    Console.WriteLine($"waiting for the RDP client to accept '{InspectorChannel}' … {secs}s" +
+                        (secs >= 15 ? "  (no client plugin? make sure RDPeek is installed on the CLIENT and reconnect the RDP session)" : ""));
+                }
                 stop.Wait(1000);
                 continue;
             }
 
             Logger.Log("channel open — client connected.");
-            Console.WriteLine("channel open — client connected.");
+            Console.WriteLine($"[connected] client attached on '{InspectorChannel}' — serving.");
             try
             {
                 Serve(h, stop);
@@ -68,6 +80,9 @@ internal static class ServeLoop
             if (!stop.IsSet)
             {
                 Logger.Log("channel closed — awaiting reconnect.");
+                Console.WriteLine("[disconnected] client detached — waiting for it to come back…");
+                waitingSince = DateTime.UtcNow;
+                lastReport = -1;
                 stop.Wait(1000);
             }
         }

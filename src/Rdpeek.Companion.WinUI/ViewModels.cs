@@ -36,6 +36,13 @@ public partial class ConnectionRow : ObservableObject
     // Non-empty when the in-process window plugin isn't answering this session's pipe — shown as a
     // caution in the switcher (the session was started before the plugin was registered).
     [ObservableProperty] private string _controlHint = "";
+    // Per-connection health for the Diagnostics tab (client diag plugin / window plugin / server agent).
+    [ObservableProperty] private string _clientText = "Client plugin: —";
+    [ObservableProperty] private Brush _clientBrush = UiBrushes.Muted;
+    [ObservableProperty] private string _controlText = "Window plugin: —";
+    [ObservableProperty] private Brush _controlBrush = UiBrushes.Muted;
+    [ObservableProperty] private string _serverText = "Agent: —";
+    [ObservableProperty] private Brush _serverBrush = UiBrushes.Muted;
     public BrokerServer.AgentState? State { get; set; }
 }
 
@@ -87,6 +94,9 @@ public static class Ui
 
     public static Microsoft.UI.Xaml.Visibility VisibleIfAny(System.Collections.ICollection? c) =>
         c is { Count: > 0 } ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public static Microsoft.UI.Xaml.Visibility HiddenIfAny(System.Collections.ICollection? c) =>
+        c is { Count: > 0 } ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
 
     public static string PluginDetail(string activation, string module, string bitness)
     {
@@ -385,6 +395,19 @@ public partial class MainViewModel : ObservableObject
                 LocalDest = System.IO.Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", leaf);
         }
+    }
+
+    /// <summary>Rehost the broker pipe and clear stale state, then re-run checks — a manual retry when a
+    /// session shows no agent. (If the agent's console says "waiting…", the fix is client-side: make sure
+    /// the RDPeek plugin is loaded and reconnect the RDP session.)</summary>
+    [RelayCommand]
+    private void Reconnect()
+    {
+        WindowStatus = "Reconnecting…";
+        try { _broker.Restart(); } catch { }
+        Refresh();
+        _ = RunDiagnostics();
+        WindowStatus = "Broker restarted — waiting for plugins/agents to re-announce.";
     }
 
     [RelayCommand]
@@ -1242,6 +1265,7 @@ public partial class MainViewModel : ObservableObject
             var (aState, aText) = agentMap.TryGetValue(w.Hwnd, out var a) ? a : (null, "—");
             row.State = aState;
             row.Agent = aText;
+            DiagnoseConnection(row, states);
             UpdateRowMetrics(row);
             // Note in the switcher when the in-process control plugin isn't loaded for this session
             // (started before it was registered). Probe once for a new row, and keep re-probing a row
@@ -1280,9 +1304,15 @@ public partial class MainViewModel : ObservableObject
         bool connected = st?.Status == "connected";
         string host = !string.IsNullOrEmpty(st?.Host) ? st!.Host : (st?.Sysinfo?.HostName ?? "");
 
+        // When nothing is connected, say why + what to do: any plugin "listening" means the client side
+        // is up and it's the in-session agent that's missing; none listening means the client plugin
+        // isn't loaded (reconnect the RDP session after installing/updating RDPeek).
+        int listening = _broker.Snapshot().Count(s => s.Status == "listening");
         ConnectionSummary = connected
             ? $"{(string.IsNullOrEmpty(host) ? "agent" : host)}   ·   ✓ agent connected"
-            : Connections.Count == 0 ? "No RDP connection." : "⚠ No agent in this session.";
+            : Connections.Count == 0 ? "No RDP connection."
+            : listening > 0 ? "⚠ No agent in the session — is rdpeek-agent running there? (its window should say \"connected\", not \"waiting…\")"
+            : "⚠ Client plugin not loaded — reconnect the RDP session (fully quit msrdc first) after installing/updating RDPeek.";
 
         if (connected && _lastAgentUpdate is { } t)
         {
@@ -1321,6 +1351,42 @@ public partial class MainViewModel : ObservableObject
 
         row.HealthBrush = problems.Count == 0 ? UiBrushes.Ok : UiBrushes.Warn;
         row.HealthText = problems.Count == 0 ? "healthy" : string.Join(" · ", problems);
+    }
+
+    /// <summary>Fill a row's per-connection health (Diagnostics tab): is the client diag plugin present
+    /// for this window, is the in-proc window plugin loaded, and is a server agent connected. Uses the
+    /// client-pid the plugin reports so it's accurate per connection (falls back to the correlated state).</summary>
+    private void DiagnoseConnection(ConnectionRow row, IReadOnlyList<BrokerServer.AgentState> states)
+    {
+        // The plugin state for THIS window: prefer exact client-pid match, else the assigned agent.
+        var s = states.FirstOrDefault(x => x.ClientPid != 0 && x.ClientPid == row.WindowPid) ?? row.State;
+
+        // Client side — the out-of-process diagnostics plugin (its listener == the agent's channel).
+        if (s is null) { row.ClientText = "Client plugin: not detected on this connection"; row.ClientBrush = UiBrushes.Fail; }
+        else if (s.Status == "connected") { row.ClientText = "Client plugin: connected"; row.ClientBrush = UiBrushes.Ok; }
+        else { row.ClientText = "Client plugin: listening (loaded, awaiting agent)"; row.ClientBrush = UiBrushes.Ok; }
+
+        // In-process window plugin (drives focus/labels) — ControlHint is set when its pipe doesn't answer.
+        if (string.IsNullOrEmpty(row.ControlHint)) { row.ControlText = "Window plugin: loaded"; row.ControlBrush = UiBrushes.Ok; }
+        else { row.ControlText = "Window plugin: not loaded (reconnect the session)"; row.ControlBrush = UiBrushes.Warn; }
+
+        // Server side — the in-session agent.
+        if (s?.Status == "connected")
+        {
+            var build = s.Sysinfo is { } si && !string.IsNullOrEmpty(si.HostName) ? si.HostName : s.Host;
+            row.ServerText = $"Agent: connected{(string.IsNullOrEmpty(build) ? "" : $"  ·  {build}")}";
+            row.ServerBrush = UiBrushes.Ok;
+        }
+        else if (s?.Status == "listening")
+        {
+            row.ServerText = "Agent: not running in the session (client side is up)";
+            row.ServerBrush = UiBrushes.Warn;
+        }
+        else
+        {
+            row.ServerText = "Agent: no data";
+            row.ServerBrush = UiBrushes.Muted;
+        }
     }
 
     /// <summary>Assign each RDP window a connected agent, globally (so two agents can't both grab the

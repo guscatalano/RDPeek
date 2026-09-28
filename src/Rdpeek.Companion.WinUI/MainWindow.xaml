@@ -21,6 +21,8 @@
             <TextBlock Text="{x:Bind Vm.Version}" FontSize="12" Opacity="0.55" VerticalAlignment="Bottom" Margin="0,0,0,5" />
             <Button Content="Copy agent-install command" Command="{x:Bind Vm.CopyInstallCommand}" VerticalAlignment="Center" />
             <Button Content="Refresh" Command="{x:Bind Vm.RefreshCommand}" VerticalAlignment="Center" />
+            <Button Content="Reconnect" Command="{x:Bind Vm.ReconnectCommand}" VerticalAlignment="Center"
+                    ToolTipService.ToolTip="Rehost the broker pipe and re-run checks when a session shows no agent" />
             <Button Content="Export bundle" Command="{x:Bind Vm.ExportBundleCommand}" VerticalAlignment="Center"
                     ToolTipService.ToolTip="Collect host, channels, counters, frames and diagnostics into a shareable JSON file" />
             <HyperlinkButton Content="{x:Bind Vm.UpdateNotice, Mode=OneWay}" Command="{x:Bind Vm.ApplyUpdateCommand}"
@@ -726,6 +728,45 @@
                             </StackPanel>
 
                             <ScrollViewer Grid.Row="2">
+                              <StackPanel Spacing="8">
+                                <!-- Per-connection health: client side (plugin) vs server side (agent) -->
+                                <TextBlock Text="Per-connection health" FontWeight="SemiBold" />
+                                <TextBlock Opacity="0.7" FontSize="12" TextWrapping="Wrap"
+                                           Text="Each open RDP connection and whether its client side (the RDPeek plugin) and server side (the in-session agent) are up." />
+                                <ItemsControl ItemsSource="{x:Bind Vm.Connections}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:ConnectionRow">
+                                            <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                                                    CornerRadius="6" Padding="12,10" Margin="0,0,0,8">
+                                                <StackPanel Spacing="5">
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <TextBlock Text="{x:Bind Tag}" FontWeight="SemiBold"
+                                                                   Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                                        <TextBlock Text="{x:Bind Host, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{x:Bind Window, Mode=OneWay}" Opacity="0.5" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                                    </StackPanel>
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <Ellipse Width="10" Height="10" VerticalAlignment="Center" Fill="{x:Bind ClientBrush, Mode=OneWay}" />
+                                                        <TextBlock Text="{x:Bind ClientText, Mode=OneWay}" FontSize="13" />
+                                                    </StackPanel>
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <Ellipse Width="10" Height="10" VerticalAlignment="Center" Fill="{x:Bind ControlBrush, Mode=OneWay}" />
+                                                        <TextBlock Text="{x:Bind ControlText, Mode=OneWay}" FontSize="13" />
+                                                    </StackPanel>
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <Ellipse Width="10" Height="10" VerticalAlignment="Center" Fill="{x:Bind ServerBrush, Mode=OneWay}" />
+                                                        <TextBlock Text="{x:Bind ServerText, Mode=OneWay}" FontSize="13" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="No RDP connections detected." Opacity="0.6" FontSize="12"
+                                           Visibility="{x:Bind local:Ui.HiddenIfAny(Vm.Connections), Mode=OneWay}" />
+
+                                <TextBlock Text="Plugin registration (rdpeek-doctor)" FontWeight="SemiBold" Margin="0,8,0,0" />
                                 <ItemsControl ItemsSource="{x:Bind Vm.Diagnostics}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="client:PluginReport">
@@ -759,6 +800,7 @@
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
+                              </StackPanel>
                             </ScrollViewer>
                         </Grid>
                     </Border>
