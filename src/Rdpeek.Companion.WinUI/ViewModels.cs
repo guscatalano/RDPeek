@@ -1242,7 +1242,7 @@ public partial class MainViewModel : ObservableObject
 
         // Assign agents to windows once, globally, so two connections can't both claim the same agent
         // and gateway/Cloud PC sessions (whose titles don't match the host) still each get one.
-        var agentMap = AssignAgents(windows, states);
+        var agentMap = AgentCorrelation.Assign(windows, states);
 
         // Update/add a row per open RDP window (in place, to keep selection stable).
         var seen = new HashSet<IntPtr>();
@@ -1387,70 +1387,6 @@ public partial class MainViewModel : ObservableObject
             row.ServerText = "Agent: no data";
             row.ServerBrush = UiBrushes.Muted;
         }
-    }
-
-    /// <summary>Assign each RDP window a connected agent, globally (so two agents can't both grab the
-    /// same window). Two passes: (1) confident host-name match for direct connects; (2) order-pair the
-    /// leftovers — needed for gateway / Cloud PC connects, where the window title is a friendly name or
-    /// gateway address that never matches the Cloud PC's real computer name. Pairing is stable across
-    /// refreshes (sorted by hwnd / seq) so rows don't swap data each tick.</summary>
-    private static Dictionary<IntPtr, (BrokerServer.AgentState? State, string Text)> AssignAgents(
-        IReadOnlyList<RdpWindow> windows, IReadOnlyList<BrokerServer.AgentState> states)
-    {
-        var map = new Dictionary<IntPtr, (BrokerServer.AgentState?, string)>();
-        var connected = states.Where(s => s.Status == "connected").ToList();
-        var claimed = new HashSet<BrokerServer.AgentState>();
-
-        // Pass 0: exact match by client pid. The diag plugin captured the RDP client's process id in
-        // IWTSPlugin.Initialize (the pid that owns this connection's channel) and reported it, so we can
-        // join THIS agent to THIS window with certainty — even through a gateway/Cloud PC where names
-        // don't match. This is the reliable path; the host/order passes below are fallbacks.
-        foreach (var w in windows)
-        {
-            var m = connected.FirstOrDefault(s => !claimed.Contains(s) && s.ClientPid != 0 && s.ClientPid == w.Pid);
-            if (m is not null) { claimed.Add(m); map[w.Hwnd] = (m, $"✓ {(string.IsNullOrEmpty(m.Host) ? "connected" : m.Host)}"); }
-        }
-
-        // Pass 1: confident host match (short name, case-insensitive, DNS domain dropped).
-        foreach (var w in windows)
-        {
-            if (map.ContainsKey(w.Hwnd)) continue;
-            var m = connected.FirstOrDefault(s => !claimed.Contains(s) && HostsMatch(s.Host, w.Host));
-            if (m is not null) { claimed.Add(m); map[w.Hwnd] = (m, $"✓ {m.Host}"); }
-        }
-
-        // Pass 2: order-pair the rest. "≈" marks it inferred (names couldn't be matched) — confirm which
-        // is which via the thumbnail or the host shown. Better than both sessions showing nothing.
-        var freeWins = windows.Where(w => !map.ContainsKey(w.Hwnd)).OrderBy(w => w.Hwnd.ToInt64()).ToList();
-        var freeAgents = connected.Where(s => !claimed.Contains(s)).OrderBy(s => s.Seq).ThenBy(s => s.Pid).ToList();
-        for (int i = 0; i < freeWins.Count && i < freeAgents.Count; i++)
-        {
-            var a = freeAgents[i]; claimed.Add(a);
-            map[freeWins[i].Hwnd] = (a, $"≈ {(string.IsNullOrEmpty(a.Host) ? "connected" : a.Host)}");
-        }
-
-        // Whatever's left has no agent.
-        int awaiting = states.Count(s => s.Status == "listening");
-        foreach (var w in windows)
-            if (!map.ContainsKey(w.Hwnd))
-                map[w.Hwnd] = (null, (connected.Count == 0 && awaiting > 0) ? "⚠ no agent" : "—");
-
-        return map;
-    }
-
-    /// <summary>Do two host strings refer to the same machine? Case-insensitive on the short name
-    /// (DNS domain stripped), so "SERVER01", "server01" and "server01.corp.local" all match. Returns
-    /// false for empty strings or an IP-vs-name pair we can't reconcile.</summary>
-    private static bool HostsMatch(string? a, string? b)
-    {
-        static string Short(string? h)
-        {
-            h = (h ?? "").Trim().ToLowerInvariant();
-            int dot = h.IndexOf('.');
-            return dot > 0 ? h[..dot] : h;
-        }
-        var na = Short(a); var nb = Short(b);
-        return na.Length > 0 && nb.Length > 0 && na == nb;
     }
 
     private void UpdateDetails()
