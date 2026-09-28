@@ -16,12 +16,14 @@ public sealed class TrayIcon : IDisposable
 {
     public const int CmdShowSwitcher = 1, CmdDockLeft = 2, CmdDockRight = 3,
                      CmdAutoCycle = 4, CmdConnectionBar = 5, CmdDashboard = 6, CmdExit = 7, CmdLaunch = 8,
-                     CmdFloating = 9, CmdHotkeys = 10, CmdStartup = 11;
+                     CmdFloating = 9, CmdHotkeys = 10, CmdStartup = 11, CmdCheckUpdates = 12, CmdBalloonClicked = 13;
 
     private const int WM_TRAY = 0x8000 + 1;   // WM_APP + 1
     private const int WM_RBUTTONUP = 0x0205, WM_LBUTTONDBLCLK = 0x0203, WM_CONTEXTMENU = 0x007B, WM_NULL = 0;
-    private const int NIM_ADD = 0, NIM_DELETE = 2;
-    private const int NIF_MESSAGE = 1, NIF_ICON = 2, NIF_TIP = 4;
+    private const int NIN_BALLOONUSERCLICK = 0x0405;   // user clicked the balloon body (not the X)
+    private const int NIM_ADD = 0, NIM_MODIFY = 1, NIM_DELETE = 2;
+    private const int NIF_MESSAGE = 1, NIF_ICON = 2, NIF_TIP = 4, NIF_INFO = 0x10;
+    private const int NIIF_INFO = 1;
     private const uint MF_STRING = 0, MF_SEPARATOR = 0x800, MF_CHECKED = 8;
     private const uint TPM_RETURNCMD = 0x0100, TPM_RIGHTBUTTON = 0x0002;
 
@@ -115,6 +117,7 @@ public sealed class TrayIcon : IDisposable
             int mouse = (int)(l.ToInt64() & 0xFFFF);
             if (mouse == WM_RBUTTONUP || mouse == WM_CONTEXTMENU) ShowMenu();
             else if (mouse == WM_LBUTTONDBLCLK) _onCommand(CmdShowSwitcher);
+            else if (mouse == NIN_BALLOONUSERCLICK) _onCommand(CmdBalloonClicked);
             return IntPtr.Zero;
         }
         return DefWindowProcW(h, msg, w, l);
@@ -136,6 +139,8 @@ public sealed class TrayIcon : IDisposable
         AppendMenuW(menu, MF_STRING | (s.ConnectionBar ? MF_CHECKED : 0), CmdConnectionBar, "Show connection bar");
         AppendMenuW(menu, MF_SEPARATOR, 0, null);
         AppendMenuW(menu, MF_STRING | (s.Startup ? MF_CHECKED : 0), CmdStartup, "Start with Windows");
+        AppendMenuW(menu, MF_SEPARATOR, 0, null);
+        AppendMenuW(menu, MF_STRING, CmdCheckUpdates, "Check for updates…");
         AppendMenuW(menu, MF_STRING, CmdDashboard, "Open dashboard");
         AppendMenuW(menu, MF_STRING, CmdExit, "Exit");
 
@@ -145,6 +150,20 @@ public sealed class TrayIcon : IDisposable
         PostMessageW(_hwnd, WM_NULL, IntPtr.Zero, IntPtr.Zero);
         DestroyMenu(menu);
         if (id != 0) _onCommand((int)id);
+    }
+
+    /// <summary>Pop a balloon/toast from the tray icon. Best-effort; the info flags are cleared right
+    /// after so a later NIM_MODIFY (e.g. a tip change) doesn't re-show a stale balloon.</summary>
+    public void ShowBalloon(string title, string text)
+    {
+        if (_hwnd == IntPtr.Zero) return;
+        _data.uFlags = NIF_INFO;
+        _data.szInfoTitle = title.Length > 63 ? title[..63] : title;
+        _data.szInfo = text.Length > 255 ? text[..255] : text;
+        _data.dwInfoFlags = NIIF_INFO;
+        _data.uTimeoutOrVersion = 10000;
+        Shell_NotifyIconW(NIM_MODIFY, ref _data);
+        _data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;   // restore for subsequent modifies
     }
 
     public void Dispose()

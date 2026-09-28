@@ -1750,6 +1750,28 @@ public partial class MainViewModel : ObservableObject
             });
     }
 
+    /// <summary>True once a check has found a newer release that <see cref="ApplyUpdateCommand"/> can install.</summary>
+    public bool HasPendingUpdate => _pendingUpdate is not null;
+
+    /// <summary>On-demand update check (from the tray "Check for updates" item). Unlike the quiet startup
+    /// check this returns the outcome so the caller can give explicit feedback — including "up to date"
+    /// and "couldn't check" — and it still populates the header link/pending-update state when newer.
+    /// Returns null when offline / rate-limited / unparseable.</summary>
+    public async Task<UpdateInfo?> CheckNowAsync()
+    {
+        var info = await UpdateCheck.CheckAsync();
+        if (info is { UpdateAvailable: true })
+            _dispatcher.TryEnqueue(() =>
+            {
+                _pendingUpdate = info;
+                string how = UpdateCheck.IsMsiInstall() ? "click to install" : "click for download";
+                UpdateNotice = $"Update available: v{info.Latest}  ({how})";
+                UpdateUri = new Uri(info.Url);
+                OnPropertyChanged(nameof(HasPendingUpdate));
+            });
+        return info;
+    }
+
     /// <summary>Apply the pending update the right way for how RDPeek was installed: an MSI install
     /// downloads the new MSI, launches msiexec, and exits so the upgrade can replace files; a standalone
     /// build opens the releases page (a running single-file exe can't safely replace itself). Any failure

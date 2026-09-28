@@ -182,8 +182,25 @@ public sealed partial class MainWindow : Window
             case TrayIcon.CmdHotkeys: Vm.HotkeysEnabled = !Vm.HotkeysEnabled; break;
             case TrayIcon.CmdStartup: Vm.StartWithWindows = !Vm.StartWithWindows; break;
             case TrayIcon.CmdDashboard: AppWindow.Show(); Activate(); break;
+            case TrayIcon.CmdCheckUpdates: _ = CheckUpdatesFromTrayAsync(); break;
+            case TrayIcon.CmdBalloonClicked: if (Vm.HasPendingUpdate) Vm.ApplyUpdateCommand.Execute(null); break;
             case TrayIcon.CmdExit: ExitApp(); break;
         }
+    }
+
+    /// <summary>Manual update check from the tray. Gives explicit balloon feedback for all three outcomes
+    /// (newer available / already current / couldn't reach GitHub); clicking an "available" balloon runs
+    /// the same install path as the header link (see <see cref="TrayIcon.CmdBalloonClicked"/>).</summary>
+    private async Task CheckUpdatesFromTrayAsync()
+    {
+        _tray.ShowBalloon("RDPeek", "Checking for updates…");
+        var info = await Vm.CheckNowAsync();
+        if (info is null)
+            _tray.ShowBalloon("RDPeek", "Couldn't check for updates — offline or GitHub unavailable.");
+        else if (info.UpdateAvailable)
+            _tray.ShowBalloon("Update available", $"RDPeek v{info.Latest} is available. Click here to install.");
+        else
+            _tray.ShowBalloon("RDPeek is up to date", $"You're on the latest version (v{info.Current}).");
     }
 
     /// <summary>Really quit. WinUI's Application.Exit() can leave the process alive when background or
