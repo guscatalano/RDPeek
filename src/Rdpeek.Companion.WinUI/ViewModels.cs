@@ -366,6 +366,46 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _thumbnailRate = "3";   // seconds between agent screenshot polls
     private DispatcherQueueTimer? _thumbTimer;
 
+    // Keep session awake (anti-idle). Off by default. When on, a timer injects a benign F15 keystroke
+    // every KeepAliveSeconds and a machine-level SetThreadExecutionState hold stops the local box
+    // sleeping. See KeepAwake.cs. The keystroke reaches the focused window, so it keeps a focused/
+    // fullscreen RDP session from idling out (a focus-independent variant would need agent-side injection).
+    [ObservableProperty] private bool _keepAlive;               // off by default
+    [ObservableProperty] private double _keepAliveSeconds = 50; // safely under typical idle thresholds
+    private DispatcherQueueTimer? _keepAliveTimer;
+
+    private TimeSpan KeepAliveInterval() => TimeSpan.FromSeconds(Math.Clamp(KeepAliveSeconds, 5, 3600));
+
+    partial void OnKeepAliveChanged(bool value)
+    {
+        _keepAliveTimer ??= CreateKeepAliveTimer();
+        if (value)
+        {
+            KeepAwake.Hold();          // stop the local machine sleeping / screensaver
+            KeepAwake.Nudge();         // one immediate nudge so the idle timer resets right away
+            _keepAliveTimer.Interval = KeepAliveInterval();
+            _keepAliveTimer.Start();
+        }
+        else
+        {
+            _keepAliveTimer.Stop();
+            KeepAwake.Release();
+        }
+    }
+
+    partial void OnKeepAliveSecondsChanged(double value)
+    {
+        if (_keepAliveTimer is not null && KeepAlive) _keepAliveTimer.Interval = KeepAliveInterval();
+    }
+
+    private DispatcherQueueTimer CreateKeepAliveTimer()
+    {
+        var t = _dispatcher.CreateTimer();
+        t.Interval = KeepAliveInterval();
+        t.Tick += (_, _) => KeepAwake.Nudge();   // KeepAwake.Nudge swallows its own errors
+        return t;
+    }
+
     // Windows Event Log viewer.
     public ObservableCollection<EventRow> EventLogEntries { get; } = new();
     public ObservableCollection<string> EventLogNames { get; } = new() { "System", "Application", "Setup" };

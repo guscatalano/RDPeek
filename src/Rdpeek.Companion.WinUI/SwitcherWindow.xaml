@@ -111,6 +111,8 @@
                          VerticalAlignment="Center" />
                 <TextBlock Text="sec" VerticalAlignment="Center" Opacity="0.7" />
             </StackPanel>
+            <CheckBox Content="Keep session awake" IsChecked="{x:Bind Vm.KeepAlive, Mode=TwoWay}" MinWidth="0"
+                      ToolTipService.ToolTip="Sends a harmless keystroke (F15) every ~50s so the focused RDP session doesn't idle out and disconnect, and keeps this machine from sleeping while it's on." />
             <CheckBox Content="Start with Windows" IsChecked="{x:Bind Vm.StartWithWindows, Mode=TwoWay}" MinWidth="0" />
             <TextBlock FontSize="11" Opacity="0.55" TextWrapping="Wrap"
                        Text="Ctrl+Alt+← / → cycle. Hide it, then shove the cursor to the edge (mid-screen) to reveal." />
