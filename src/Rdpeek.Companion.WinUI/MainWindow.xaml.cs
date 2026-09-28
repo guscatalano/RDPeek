@@ -61,7 +61,8 @@ public sealed partial class MainWindow : Window
     private void OnNavChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         var tag = (args.SelectedItem as NavigationViewItem)?.Tag as string ?? "dash";
-        Vm.OnOverviewTab = tag == "dash";   // hide the redundant header picker on Overview (the rail selects there)
+        Vm.OnOverviewTab = tag == "dash";
+        FleetView.Visibility = tag == "fleet" ? Visibility.Visible : Visibility.Collapsed;
         ConnectView.Visibility = tag == "connect" ? Visibility.Visible : Visibility.Collapsed;
         DashView.Visibility = tag == "dash" ? Visibility.Visible : Visibility.Collapsed;
         NetView.Visibility = tag == "net" ? Visibility.Visible : Visibility.Collapsed;
@@ -81,6 +82,16 @@ public sealed partial class MainWindow : Window
     }
 
     private void OnFullProcesses(object sender, RoutedEventArgs e) => Nav.SelectedItem = ProcNavItem;
+
+    // Click a card in Fleet -> scope to that connection and jump to its Overview.
+    private void OnFleetItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is ConnectionRow row)
+        {
+            Vm.SelectedConnection = row;
+            Nav.SelectedItem = OverviewNavItem;
+        }
+    }
 
     private void OnEntryClick(object sender, ItemClickEventArgs e)
     {

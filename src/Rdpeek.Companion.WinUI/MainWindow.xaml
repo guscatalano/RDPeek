@@ -64,21 +64,6 @@
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12,8">
             <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                 <Ellipse Width="10" Height="10" VerticalAlignment="Center" Fill="{x:Bind Vm.LivenessBrush, Mode=OneWay}" />
-                <!-- Persistent connection picker: which host is in focus, switchable on EVERY tab -->
-                <ComboBox ItemsSource="{x:Bind Vm.Connections}" SelectedItem="{x:Bind Vm.SelectedConnection, Mode=TwoWay}"
-                          MinWidth="220" VerticalAlignment="Center"
-                          Visibility="{x:Bind Vm.HeaderPickerVisibility, Mode=OneWay}"
-                          ToolTipService.ToolTip="The connection all tabs are showing — switch focus here">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate x:DataType="local:ConnectionRow">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Ellipse Width="9" Height="9" VerticalAlignment="Center" Fill="{x:Bind HealthBrush, Mode=OneWay}" />
-                                <TextBlock Text="{x:Bind Tag}" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-                                <TextBlock Text="{x:Bind Host, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
                 <TextBlock Text="{x:Bind Vm.ConnectionSummary, Mode=OneWay}" FontWeight="SemiBold" VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" />
                 <TextBlock Text="{x:Bind Vm.Freshness, Mode=OneWay}" Opacity="0.55" VerticalAlignment="Center" />
@@ -87,29 +72,61 @@
 
         <muxc:NavigationView Grid.Row="2" x:Name="Nav"
                              PaneDisplayMode="Left"
-                             OpenPaneLength="190"
+                             OpenPaneLength="210"
                              IsBackButtonVisible="Collapsed"
                              IsPaneToggleButtonVisible="False"
                              IsSettingsVisible="False"
                              SelectionChanged="OnNavChanged">
+            <!-- Connection SCOPE selector: which connection every scoped tab below shows. Switch here or
+                 from Fleet. -->
+            <muxc:NavigationView.PaneHeader>
+                <Border Margin="4,4,4,0" Padding="8,6" CornerRadius="8"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                    <StackPanel Spacing="3">
+                        <TextBlock Text="CONNECTION" FontSize="9" Opacity="0.5" FontWeight="SemiBold" />
+                        <ComboBox x:Name="ScopePicker" ItemsSource="{x:Bind Vm.Connections}"
+                                  SelectedItem="{x:Bind Vm.SelectedConnection, Mode=TwoWay}"
+                                  HorizontalAlignment="Stretch"
+                                  Visibility="{x:Bind local:Ui.VisibleIfAny(Vm.Connections), Mode=OneWay}"
+                                  ToolTipService.ToolTip="The connection every scoped tab shows — switch here">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="local:ConnectionRow">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Ellipse Width="9" Height="9" VerticalAlignment="Center" Fill="{x:Bind HealthBrush, Mode=OneWay}" />
+                                        <TextBlock Text="{x:Bind Tag}" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                        <TextBlock Text="{x:Bind Host, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock Text="No connections" Opacity="0.5" FontSize="12"
+                                   Visibility="{x:Bind local:Ui.HiddenIfAny(Vm.Connections), Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+            </muxc:NavigationView.PaneHeader>
             <muxc:NavigationView.MenuItems>
+                <!-- Fleet & global -->
+                <muxc:NavigationViewItem Content="Fleet" Tag="fleet" x:Name="FleetNavItem" IsSelected="True" />
+                <muxc:NavigationViewItem Content="Diagnostics" Tag="diag" />
                 <muxc:NavigationViewItem Content="Connect" Tag="connect" />
-                <muxc:NavigationViewItemHeader Content="DVC workbench" />
-                <muxc:NavigationViewItem Content="Overview" Tag="dash" IsSelected="True" />
+                <!-- Scoped to the selected connection -->
+                <muxc:NavigationViewItemHeader Content="Connection" />
+                <muxc:NavigationViewItem Content="Overview" Tag="dash" x:Name="OverviewNavItem" />
+                <muxc:NavigationViewItemHeader Content="DVC" />
                 <muxc:NavigationViewItem Content="Channels" Tag="chan" />
                 <muxc:NavigationViewItem Content="DVC traffic" Tag="dvc" />
                 <muxc:NavigationViewItem Content="Frames" Tag="frames" />
-                <muxc:NavigationViewItem Content="Files" Tag="files" />
-                <muxc:NavigationViewItem Content="Diagnostics" Tag="diag" />
-                <muxc:NavigationViewItemHeader Content="Host (via agent)" />
+                <muxc:NavigationViewItem Content="Link" Tag="link" />
+                <muxc:NavigationViewItemHeader Content="Host" />
                 <muxc:NavigationViewItem Content="System" Tag="system" />
                 <muxc:NavigationViewItem Content="Processes" Tag="proc" x:Name="ProcNavItem" />
-                <muxc:NavigationViewItem Content="Event Log" Tag="events" />
                 <muxc:NavigationViewItem Content="Network" Tag="net" />
                 <muxc:NavigationViewItem Content="Sessions" Tag="sess" />
                 <muxc:NavigationViewItem Content="Services" Tag="svc" />
-                <muxc:NavigationViewItem Content="Link" Tag="link" />
+                <muxc:NavigationViewItem Content="Event Log" Tag="events" />
                 <muxc:NavigationViewItemHeader Content="Actions" />
+                <muxc:NavigationViewItem Content="Files" Tag="files" />
                 <muxc:NavigationViewItem Content="Shell" Tag="shell" />
                 <muxc:NavigationViewItem Content="Window" Tag="window" />
             </muxc:NavigationView.MenuItems>
@@ -176,44 +193,41 @@
                     </Border>
                 </Grid>
 
-                <!-- ===================== DASHBOARD ===================== -->
-                <Grid x:Name="DashView" ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="330" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-
-                    <!-- LEFT: fleet rail — every connection, click to focus -->
-                    <Border Grid.Column="0" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                <!-- ===================== FLEET (all connections) ===================== -->
+                <Grid x:Name="FleetView" Visibility="Collapsed">
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
-                            <TextBlock Grid.Row="0" Text="Connections" FontWeight="SemiBold" Margin="14,12,14,6" />
-                            <TextBlock Grid.Row="1" Text="No RDP connections detected." Opacity="0.6" FontSize="12" Margin="14,0"
-                                       Visibility="{x:Bind local:Ui.HiddenIfAny(Vm.Connections), Mode=OneWay}" VerticalAlignment="Top" />
-                            <ListView Grid.Row="1" ItemsSource="{x:Bind Vm.Connections}"
-                                      SelectedItem="{x:Bind Vm.SelectedConnection, Mode=TwoWay}" SelectionMode="Single">
-                                <ListView.ItemContainerStyle>
-                                    <Style TargetType="ListViewItem">
-                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                        <Setter Property="Padding" Value="10,8" />
-                                        <Setter Property="MinHeight" Value="0" />
-                                    </Style>
-                                </ListView.ItemContainerStyle>
-                                <ListView.ItemTemplate>
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="16,12">
+                                <TextBlock Text="Fleet" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="{x:Bind Vm.ConnectionSummary, Mode=OneWay}" Opacity="0.6" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="1" Margin="16,0" Opacity="0.6" FontSize="12" VerticalAlignment="Top"
+                                       Text="No RDP connections — launch one from Connect, or start mstsc/msrdc."
+                                       Visibility="{x:Bind local:Ui.HiddenIfAny(Vm.Connections), Mode=OneWay}" />
+                            <GridView Grid.Row="1" ItemsSource="{x:Bind Vm.Connections}" SelectionMode="None"
+                                      IsItemClickEnabled="True" ItemClick="OnFleetItemClick" Padding="10">
+                                <GridView.ItemTemplate>
                                     <DataTemplate x:DataType="local:ConnectionRow">
-                                        <local:ConnectionCard Row="{x:Bind}" />
+                                        <Border Width="330" Margin="6" Padding="14,12" CornerRadius="8"
+                                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                                            <local:ConnectionCard Row="{x:Bind}" />
+                                        </Border>
                                     </DataTemplate>
-                                </ListView.ItemTemplate>
-                            </ListView>
+                                </GridView.ItemTemplate>
+                            </GridView>
                         </Grid>
                     </Border>
+                </Grid>
 
-                    <!-- RIGHT: selected-host vitals -->
-                    <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                <!-- ===================== OVERVIEW (one connection) ===================== -->
+                <Grid x:Name="DashView" Visibility="Collapsed">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel Spacing="12">
 
                             <!-- host identity -->
