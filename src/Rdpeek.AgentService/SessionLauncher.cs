@@ -78,12 +78,26 @@ internal static class SessionLauncher
 
             try
             {
+                // The agent is a console app; a service has no console, so hand it valid std handles
+                // (the NUL sink). Without them the child's stdio is invalid and its startup aborts in
+                // ~0s (verified on a live box: with valid handles it serves fine, without it exits 0x0).
+                var sa = new SECURITY_ATTRIBUTES { nLength = Marshal.SizeOf<SECURITY_ATTRIBUTES>(), bInheritHandle = true };
+                IntPtr hNul = CreateFileW("NUL", GENERIC_WRITE, FILE_SHARE_READ_WRITE, ref sa, OPEN_EXISTING, 0, IntPtr.Zero);
+                bool haveNul = hNul != IntPtr.Zero && hNul != new IntPtr(-1);
+
                 var si = new STARTUPINFO
                 {
                     cb = Marshal.SizeOf<STARTUPINFO>(),
                     // MUST be the interactive desktop, or CreateProcessAsUser fails / the
                     // process has no desktop.
                     lpDesktop = @"winsta0\default",
+                    // Give the child valid stdout/stderr (NUL). stdin stays null on purpose: NUL is opened
+                    // write-only, and a write-only handle as stdin breaks console startup (verified — with
+                    // stdin=0 + valid stdout/stderr the agent serves; with stdin=NUL-write it exits 0s).
+                    dwFlags = haveNul ? (int)STARTF_USESTDHANDLES : 0,
+                    hStdInput = IntPtr.Zero,
+                    hStdOutput = haveNul ? hNul : IntPtr.Zero,
+                    hStdError = haveNul ? hNul : IntPtr.Zero,
                 };
 
                 // Quote the exe path (it may contain spaces) and append the subcommand.
@@ -95,18 +109,28 @@ internal static class SessionLauncher
 
                 string workingDir = Path.GetDirectoryName(agentExePath) ?? Environment.SystemDirectory;
 
-                bool ok = CreateProcessAsUserW(
-                    userToken,
-                    null,               // lpApplicationName — taken from lpCommandLine's first token
-                    cmdLine,
-                    IntPtr.Zero,
-                    IntPtr.Zero,
-                    false,              // don't inherit handles across the session boundary
-                    flags,
-                    envBlock,
-                    workingDir,
-                    ref si,
-                    out PROCESS_INFORMATION pi);
+                PROCESS_INFORMATION pi;
+                bool ok;
+                try
+                {
+                    ok = CreateProcessAsUserW(
+                        userToken,
+                        null,               // lpApplicationName — taken from lpCommandLine's first token
+                        cmdLine,
+                        IntPtr.Zero,
+                        IntPtr.Zero,
+                        haveNul,            // inherit handles only when we're passing the NUL std handles
+                        flags,
+                        envBlock,
+                        workingDir,
+                        ref si,
+                        out pi);
+                }
+                finally
+                {
+                    // The child has its own reference to NUL now; drop ours.
+                    if (haveNul) CloseHandle(hNul);
+                }
 
                 if (!ok)
                     throw new InvalidOperationException(

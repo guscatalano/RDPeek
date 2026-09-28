@@ -102,6 +102,27 @@ internal static class NativeMethods
     internal const uint CREATE_NO_WINDOW = 0x08000000;
     internal const uint CREATE_NEW_CONSOLE = 0x00000010;
 
+    // A service has no console, so unless we hand the child valid std handles its stdio is invalid and
+    // the console/.NET-host startup aborts within ~0s (confirmed on a live box). We point them at NUL.
+    internal const uint STARTF_USESTDHANDLES = 0x00000100;
+    internal const uint GENERIC_WRITE = 0x40000000;
+    internal const uint OPEN_EXISTING = 3;
+    internal const uint FILE_SHARE_READ_WRITE = 0x00000003;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct SECURITY_ATTRIBUTES
+    {
+        public int nLength;
+        public IntPtr lpSecurityDescriptor;
+        public bool bInheritHandle;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    internal static extern IntPtr CreateFileW(
+        string lpFileName, uint dwDesiredAccess, uint dwShareMode,
+        ref SECURITY_ATTRIBUTES lpSecurityAttributes, uint dwCreationDisposition,
+        uint dwFlagsAndAttributes, IntPtr hTemplateFile);
+
     [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     internal static extern bool CreateProcessAsUserW(
         SafeAccessTokenHandle hToken,
