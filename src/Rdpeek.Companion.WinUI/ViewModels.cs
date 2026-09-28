@@ -10,6 +10,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Rdpeek.Client;
+using Rdpeek.Tracing;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 
@@ -330,6 +331,15 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _shellEnabled;
     [ObservableProperty] private string _shellHint = "Select a connection whose agent was started with --allow-shell.";
 
+    // ETW trace capture — server side (via the agent) and client side (locally). Both need Administrator;
+    // the server side additionally needs an agent started with --allow-trace (advertised as a capability).
+    [ObservableProperty] private int _traceSeconds = 20;
+    [ObservableProperty] private string _traceProviders = "";   // empty => side defaults
+    [ObservableProperty] private bool _traceBusy;
+    [ObservableProperty] private bool _traceServerEnabled;      // agent advertised the trace capability
+    [ObservableProperty] private string _traceStatus = "Capture an ETW trace and package it (.etl + metadata) as a shareable .zip.";
+    [ObservableProperty] private string _traceServerHint = "Select a connection whose agent was started with --allow-trace.";
+
     // In-process window plugin (Rdpeek.WindowPlugin) — drive mstsc's own window over its control pipe.
     // This is the client end of \\.\pipe\rdpeek-window; the plugin runs inside mstsc and moves the window.
     [ObservableProperty] private string _windowTag = "RDPeek";
@@ -374,6 +384,7 @@ public partial class MainViewModel : ObservableObject
         _broker.EventLogUpdate += payload => _dispatcher.TryEnqueue(() => OnEventLog(payload));
         _broker.ShellUpdate += payload => _dispatcher.TryEnqueue(() => OnShell(payload));
         _broker.ScreenshotUpdate += (pid, payload) => _dispatcher.TryEnqueue(() => OnScreenshot(pid, payload));
+        _broker.TraceUpdate += (kind, payload) => _dispatcher.TryEnqueue(() => OnTraceUpdate(kind, payload));
         _broker.Start();
 
         _timer = _dispatcher.CreateTimer();
@@ -1279,6 +1290,103 @@ public partial class MainViewModel : ObservableObject
     /// <summary>Set by the window: called with the bundle path so it can show a copy/open dialog.</summary>
     public Action<string>? ExportCompleted;
 
+    /// <summary>
+    /// Client-side ETW trace: capture mstsc/msrdc's own RDP providers on THIS machine and package
+    /// the .etl + manifest into a shareable .zip. Runs entirely local (no agent needed). Needs
+    /// Administrator; the runner fails cleanly with a reason otherwise. Surfaces the package via the
+    /// same copy/open dialog as ExportBundle.
+    /// </summary>
+    [RelayCommand]
+    private async Task TraceClient()
+    {
+        if (TraceBusy) return;
+        TraceBusy = true;
+        int seconds = Math.Clamp(TraceSeconds, 1, 600);
+        string providers = TraceProviders ?? "";
+        SetTraceStatus($"Capturing client-side trace for {seconds}s…");
+        try
+        {
+            var result = await Task.Run(() => TraceRunner.RunAndPackage(TraceSide.Client, new TraceRunOptions
+            {
+                Seconds = seconds,
+                ProvidersSpec = providers,
+                SessionId = System.Diagnostics.Process.GetCurrentProcess().SessionId,
+            }));
+
+            if (result.Ok)
+            {
+                SetTraceStatus($"Client trace saved: {result.PackagePath} ({Bytes((ulong)result.PackageSize)})");
+                ExportCompleted?.Invoke(result.PackagePath);
+            }
+            else
+            {
+                SetTraceStatus($"Client trace failed: {result.Note}");
+            }
+        }
+        catch (Exception ex)
+        {
+            SetTraceStatus($"Client trace failed: {ex.Message}");
+        }
+        finally
+        {
+            TraceBusy = false;
+        }
+    }
+
+    /// <summary>Trace feedback goes to both the trace panel and the footer status line.</summary>
+    private void SetTraceStatus(string s) { TraceStatus = s; Status = s; }
+
+    /// <summary>
+    /// Server-side ETW trace: ask the selected connection's agent to capture on the session host,
+    /// package it, and pull the .zip back over the files channel. Gated behind the agent's advertised
+    /// trace capability (--allow-trace). Progress/result arrive over the broker (see OnTraceUpdate).
+    /// </summary>
+    [RelayCommand]
+    private void TraceServer()
+    {
+        var st = SelectedConnection?.State ?? ConnectedAgent();
+        if (st is null || st.Status != "connected") { SetTraceStatus("No connected agent to trace."); return; }
+        if (!st.TraceAllowed) { SetTraceStatus("Server trace is disabled on this agent — start it with --allow-trace (elevated)."); return; }
+        if (TraceBusy) return;
+
+        int seconds = Math.Clamp(TraceSeconds, 1, 600);
+        string providers = TraceProviders ?? "";
+        // payload: seconds \t providers \t localDest (empty => plugin saves to Downloads with the package name)
+        if (_broker.SendCommand(st.Pid, Broker.Format("trace", st.Pid, st.Seq, $"{seconds}\t{providers}\t")))
+        {
+            TraceBusy = true;
+            SetTraceStatus($"Requesting {seconds}s server trace on {(string.IsNullOrEmpty(st.Host) ? "the session host" : st.Host)}…");
+        }
+        else
+        {
+            SetTraceStatus("Couldn't reach the plugin (is the agent connected?).");
+        }
+    }
+
+    private void OnTraceUpdate(string kind, string payload)
+    {
+        if (kind == "traceprogress")
+        {
+            SetTraceStatus(payload);
+            return;
+        }
+        // tracedone: ok \t bytes \t localPath \t note
+        var p = payload.Split('\t');
+        bool ok = p.Length > 0 && p[0] == "1";
+        TraceBusy = false;
+        if (ok)
+        {
+            string path = p.Length > 2 ? p[2] : "";
+            ulong bytes = p.Length > 1 && ulong.TryParse(p[1], out var b) ? b : 0;
+            SetTraceStatus($"Server trace saved: {path} ({Bytes(bytes)})");
+            if (!string.IsNullOrEmpty(path)) ExportCompleted?.Invoke(path);
+        }
+        else
+        {
+            SetTraceStatus($"Server trace failed: {(p.Length > 3 ? p[3] : "unknown error")}");
+        }
+    }
+
     [RelayCommand]
     private void CopyInstall()
     {
@@ -1512,6 +1620,13 @@ public partial class MainViewModel : ObservableObject
             : st.ShellAllowed
                 ? $"Shell enabled on {(string.IsNullOrEmpty(st.Host) ? "this host" : st.Host)} — commands run as the agent's user in the session."
                 : "Shell is disabled on this agent (read-only). Start the agent with --allow-shell to enable it.";
+
+        TraceServerEnabled = st?.TraceAllowed == true;
+        TraceServerHint = st is null
+            ? "No connected agent — the client-side trace still works on its own."
+            : st.TraceAllowed
+                ? $"Server trace enabled on {(string.IsNullOrEmpty(st.Host) ? "this host" : st.Host)} — needs the agent running elevated."
+                : "Server trace is disabled on this agent. Start the agent with --allow-trace (elevated) to enable it.";
     }
 
     private void UpdateSystemDetail(SystemDetail? d)

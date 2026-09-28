@@ -49,6 +49,12 @@
                               ToolTipService.ToolTip="Collect host, channels, counters, frames and diagnostics into a shareable JSON file" />
                 <CommandBar.SecondaryCommands>
                     <AppBarButton Label="Copy agent-install command" Command="{x:Bind Vm.CopyInstallCommand}" />
+                    <AppBarSeparator />
+                    <AppBarButton Label="Trace server (ETW)" Icon="Repair" Command="{x:Bind Vm.TraceServerCommand}"
+                                  IsEnabled="{x:Bind Vm.TraceServerEnabled, Mode=OneWay}"
+                                  ToolTipService.ToolTip="Capture a server-side ETW trace on the session host and pull the packaged .zip back (agent needs --allow-trace, elevated)" />
+                    <AppBarButton Label="Trace client (ETW, local)" Icon="Repair" Command="{x:Bind Vm.TraceClientCommand}"
+                                  ToolTipService.ToolTip="Capture a client-side ETW trace on this machine and package it as a shareable .zip (needs Administrator)" />
                 </CommandBar.SecondaryCommands>
             </CommandBar>
         </Grid>

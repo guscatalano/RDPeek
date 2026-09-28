@@ -10,6 +10,7 @@ using Rdpeek.Agent;
 //   rdpeek-agent serve      Open the DVC channel and serve (requires a live RDP session).
 //   rdpeek-agent dvcwatch   Live per-channel traffic table in the console (no DVC).
 //   rdpeek-agent serve-tcp  Serve the agent over TCP (for a mock RDP server to bridge to).
+//   rdpeek-agent trace      Capture a server-side ETW trace and package it (.etl + metadata → .zip).
 //
 // selftest exists so the real collectors can be verified anywhere, and so the viewer
 // can be developed without a deployed agent.
@@ -30,13 +31,18 @@ switch (command)
         // Opens the DVC channel and serves the collectors. Requires a live RDP
         // session with the RDPeek client plugin listening on the same channel.
         // --file-root <path> (repeatable) confines file PULL; defaults to %TEMP%.
-        return ServeLoop.Run(ParseFileRoots(args), args.Contains("--allow-shell"));
+        // --allow-trace opts this build into ETW trace capture (off by default).
+        return ServeLoop.Run(ParseFileRoots(args), args.Contains("--allow-shell"), args.Contains("--allow-trace"));
 
     case "serve-tcp":
         // Serves the same AgentCore over a TCP socket, so a mock RDP server can bridge its
         // diagnostics DVC to it and drive the real agent. `serve-tcp <port>` (default 9999).
         return ServeTcp.Run(ParsePort(args, 9999), ParseFileRoots(args), args.Contains("--fake"),
-            ParseOption(args, "--fake-host"), args.Contains("--allow-shell"));
+            ParseOption(args, "--fake-host"), args.Contains("--allow-shell"), args.Contains("--allow-trace"));
+
+    case "trace":
+        // Standalone server-side ETW capture + packaging. Needs Administrator; run on the session host.
+        return AgentTrace.Run(args);
 
     case "dvcwatch":
         // Standalone per-DVC traffic monitor — the RDP_DVC_Watcher tool this grew from,
@@ -44,7 +50,7 @@ switch (command)
         return RunDvcWatch(args.Contains("--etw"));
 
     default:
-        Console.Error.WriteLine($"Unknown command '{command}'. Use: selftest | serve | serve-tcp | dvcwatch");
+        Console.Error.WriteLine($"Unknown command '{command}'. Use: selftest | serve | serve-tcp | dvcwatch | trace");
         return 64;
 }
 
