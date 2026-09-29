@@ -5,6 +5,10 @@ namespace Rdpeek.AgentService;
 /// when to (re)launch, and applies backoff on crash loops. All P/Invoke lives in
 /// <see cref="SessionLauncher"/>; the pure restart math lives in <see cref="BackoffPolicy"/>.
 ///
+/// Launch strategy per session: try native <see cref="SessionLauncher.LaunchNative"/> first;
+/// if it can't start, or the agent dies immediately several times, switch that session to the
+/// <see cref="SessionLauncher.LaunchViaTask"/> fallback. A fresh logon starts on native again.
+///
 /// Session-0 reminder: this runs in session 0 and can't touch the DVC. It only shepherds
 /// in-session agent processes, one per active user session.
 /// </summary>
@@ -17,8 +21,19 @@ internal sealed class AgentSupervisor : IDisposable
     private readonly object _gate = new();
     private readonly Dictionary<uint, LaunchedAgent> _agents = new();
     private readonly Dictionary<uint, int> _failureStreak = new();
+    // Per-session launch strategy: native CreateProcessAsUser by default, Task Scheduler as a
+    // fallback we switch to only if native keeps dying immediately (or can't even start).
+    private readonly Dictionary<uint, LaunchMethod> _method = new();
+    private readonly Dictionary<uint, int> _nativeFastFails = new();
     private readonly CancellationTokenSource _cts = new();
     private volatile bool _stopping;
+
+    private enum LaunchMethod { Native, Task }
+
+    // A native launch that exits faster than this, repeatedly, is treated as broken (e.g. the
+    // 0xC0000142 desktop-attach failure) and the session is switched to the Task launcher.
+    private static readonly TimeSpan NativeFastFail = TimeSpan.FromSeconds(8);
+    private const int NativeFastFailsBeforeFallback = 2;
 
     public AgentSupervisor(string agentExePath, Action<string> log, BackoffPolicy? backoff = null)
     {
@@ -46,6 +61,8 @@ internal sealed class AgentSupervisor : IDisposable
         {
             if (_agents.Remove(sessionId, out var a)) agent = a;
             _failureStreak.Remove(sessionId);
+            _method.Remove(sessionId);          // a fresh logon starts on native again
+            _nativeFastFails.Remove(sessionId);
         }
         if (agent is not null)
         {
@@ -68,6 +85,8 @@ internal sealed class AgentSupervisor : IDisposable
             toKill = _agents.Values.ToList();
             _agents.Clear();
             _failureStreak.Clear();
+            _method.Clear();
+            _nativeFastFails.Clear();
         }
         foreach (var a in toKill)
         {
@@ -83,20 +102,35 @@ internal sealed class AgentSupervisor : IDisposable
     {
         if (_stopping || sessionId == 0) return;
 
+        LaunchMethod method;
         lock (_gate)
         {
             if (_agents.ContainsKey(sessionId))
                 return; // already running / tracked
+            method = _method.GetValueOrDefault(sessionId, LaunchMethod.Native);
         }
 
         LaunchedAgent agent;
         try
         {
-            agent = SessionLauncher.Launch(sessionId, _agentExePath);
+            agent = DoLaunch(sessionId, method);
+        }
+        catch (Exception ex) when (method == LaunchMethod.Native)
+        {
+            // Native couldn't even start (no winlogon, OpenProcess denied, ...) — fall back to Task.
+            _log($"Native launch into session {sessionId} ({reason}) failed: {ex.Message}. Falling back to scheduled task.");
+            lock (_gate) _method[sessionId] = LaunchMethod.Task;
+            method = LaunchMethod.Task;
+            try { agent = DoLaunch(sessionId, method); }
+            catch (Exception ex2)
+            {
+                _log($"Task launch into session {sessionId} ({reason}) also failed: {ex2.Message}");
+                return;
+            }
         }
         catch (Exception ex)
         {
-            _log($"Launch into session {sessionId} ({reason}) failed: {ex.Message}");
+            _log($"Launch ({method}) into session {sessionId} ({reason}) failed: {ex.Message}");
             return;
         }
 
@@ -113,12 +147,17 @@ internal sealed class AgentSupervisor : IDisposable
             return;
         }
 
-        _log($"Launched agent pid {agent.ProcessId} into session {sessionId} ({reason}).");
+        _log($"Launched agent pid {agent.ProcessId} into session {sessionId} ({reason}, {method}).");
 
         // Watch for exit and decide whether to relaunch.
         _ = agent.ExitTask.ContinueWith(_ => OnAgentExited(sessionId, agent),
             TaskScheduler.Default);
     }
+
+    private LaunchedAgent DoLaunch(uint sessionId, LaunchMethod method)
+        => method == LaunchMethod.Native
+            ? SessionLauncher.LaunchNative(sessionId, _agentExePath)
+            : SessionLauncher.LaunchViaTask(sessionId, _agentExePath);
 
     /// <summary>An agent exited: relaunch it (with backoff) if the session is still active.</summary>
     private void OnAgentExited(uint sessionId, LaunchedAgent agent)
@@ -139,15 +178,41 @@ internal sealed class AgentSupervisor : IDisposable
         agent.Dispose();
 
         if (_stopping) return;
+        string exit = agent.ExitCode is uint c ? $"exit 0x{c:X8}" : "exit code unknown";
 
         // Session gone? Don't relaunch — a logoff notification may not have arrived yet.
         bool stillActive = SessionLauncher.EnumerateActiveUserSessions().Any(s => s.SessionId == sessionId);
         if (!stillActive)
         {
             _log($"Agent for session {sessionId} exited; session no longer active — not relaunching.");
-            lock (_gate) _failureStreak.Remove(sessionId);
+            lock (_gate) { _failureStreak.Remove(sessionId); _nativeFastFails.Remove(sessionId); }
             SessionLauncher.RemoveTask(sessionId);
             return;
+        }
+
+        // If a NATIVE launch keeps dying immediately, switch this session to the Task fallback.
+        LaunchMethod method;
+        lock (_gate) method = _method.GetValueOrDefault(sessionId, LaunchMethod.Native);
+        if (method == LaunchMethod.Native)
+        {
+            if (ranFor < NativeFastFail)
+            {
+                int fails;
+                lock (_gate) { _nativeFastFails.TryGetValue(sessionId, out fails); fails++; _nativeFastFails[sessionId] = fails; }
+                if (fails >= NativeFastFailsBeforeFallback)
+                {
+                    lock (_gate) { _method[sessionId] = LaunchMethod.Task; _failureStreak.Remove(sessionId); _nativeFastFails.Remove(sessionId); }
+                    _log($"Native launch for session {sessionId} died fast {fails}x ({exit}); " +
+                         "falling back to the scheduled-task launcher.");
+                    _ = RelaunchAfterAsync(sessionId, TimeSpan.Zero);
+                    return;
+                }
+            }
+            else
+            {
+                // A healthy native run clears the fast-fail streak.
+                lock (_gate) _nativeFastFails.Remove(sessionId);
+            }
         }
 
         int streak;
@@ -161,8 +226,7 @@ internal sealed class AgentSupervisor : IDisposable
             _failureStreak[sessionId] = nextStreak;
         }
 
-        string exit = agent.ExitCode is uint c ? $"exit 0x{c:X8}" : "exit code unknown";
-        _log($"Agent for session {sessionId} exited after {ranFor.TotalSeconds:F0}s ({exit}) " +
+        _log($"Agent for session {sessionId} exited after {ranFor.TotalSeconds:F0}s ({exit}, {method}) " +
              $"(failure #{nextStreak}); relaunching in {delay.TotalSeconds:F0}s.");
 
         _ = RelaunchAfterAsync(sessionId, delay);

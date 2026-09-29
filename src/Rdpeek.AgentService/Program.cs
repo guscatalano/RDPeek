@@ -9,9 +9,10 @@ using Rdpeek.AgentService;
 //
 //  KEY CONSTRAINT: this process runs in **session 0**, which has no interactive RDP DVC.
 //  It therefore never opens the channel itself — it launches rdpeek-agent.exe INTO each
-//  active user session via a per-session scheduled task (Task Scheduler places it on the
-//  user's interactive desktop, so the systray works — a direct CreateProcessAsUser spawn
-//  dies at desktop-attach) and supervises those processes. See SessionLauncher.cs.
+//  active user session and supervises those processes. Default launch is native
+//  CreateProcessAsUser (SYSTEM token cloned from winlogon + EMPTY lpDesktop — the empty
+//  lpDesktop is what avoids the 0xC0000142 desktop-attach death); if native repeatedly
+//  fails it falls back to a per-session InteractiveToken scheduled task. See SessionLauncher.cs.
 //
 //  Usage:
 //    rdpeek-agent-service                 run as a service (invoked by the SCM)

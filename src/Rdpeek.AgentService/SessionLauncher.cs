@@ -9,14 +9,17 @@ namespace Rdpeek.AgentService;
 
 /// <summary>
 /// Launches <c>rdpeek-agent.exe serve</c> INTO an interactive user session on behalf of the
-/// session-0 supervisor service — via the <b>Task Scheduler</b>, not CreateProcessAsUser.
+/// session-0 supervisor service. Two strategies, both landing on a monitorable process:
 ///
-/// Why Task Scheduler: anything a session-0 service creates directly in another session dies
-/// at desktop-attach (0xC0000142). Task Scheduler is the supported mechanism that places the
-/// process in the user's session WITH its interactive desktop, so the agent's systray works.
-/// We register a tiny on-demand <c>InteractiveToken</c> task per session (no stored password),
-/// run it, then locate and monitor the resulting agent process so the supervisor can relaunch
-/// it on exit. The task is deleted when the session goes away or the service stops.
+///   * <see cref="LaunchNative"/> (the supervisor's default): clone winlogon.exe's SYSTEM token
+///     in the target session and CreateProcessAsUser with an EMPTY lpDesktop. Empty is the crux —
+///     "winsta0\default" from session 0 resolves against the caller's window station and the child
+///     dies at desktop-attach (0xC0000142); empty lets the system pick the token's-session desktop,
+///     where the systray works. Runs as SYSTEM-in-session (the PsExec -s -i model).
+///   * <see cref="LaunchViaTask"/> (fallback): register + run a per-session InteractiveToken
+///     scheduled task (runs as the logged-on user, no stored password), then find the process.
+///
+/// Both return a <see cref="LaunchedAgent"/> the supervisor watches for exit and relaunches.
 /// </summary>
 internal static class SessionLauncher
 {
@@ -62,12 +65,100 @@ internal static class SessionLauncher
     }
 
     /// <summary>
-    /// Register + run an on-demand scheduled task that starts <c>rdpeek-agent serve</c> as the
-    /// logged-on user of <paramref name="sessionId"/>, then find and wrap the agent process so
+    /// DEFAULT launcher: start <c>rdpeek-agent serve</c> in <paramref name="sessionId"/> as SYSTEM,
+    /// natively via CreateProcessAsUser using a token cloned from winlogon.exe in that session and an
+    /// EMPTY lpDesktop. Returns the wrapped process. Throws if there's no winlogon in the session or
+    /// any P/Invoke fails (the supervisor then falls back to <see cref="LaunchViaTask"/>).
+    /// </summary>
+    public static LaunchedAgent LaunchNative(uint sessionId, string agentExePath)
+    {
+        SafeAccessTokenHandle token = BuildSystemTokenForSession(sessionId);
+        using (token)
+        {
+            if (!CreateEnvironmentBlock(out IntPtr envBlock, token, false))
+                throw new InvalidOperationException(
+                    $"CreateEnvironmentBlock failed for session {sessionId} (Win32 {Marshal.GetLastWin32Error()}).");
+            try
+            {
+                var si = new STARTUPINFO
+                {
+                    cb = Marshal.SizeOf<STARTUPINFO>(),
+                    // EMPTY lpDesktop is THE fix for 0xC0000142: "winsta0\default" from a session-0
+                    // service resolves against the caller's window station (session 0), which the
+                    // target-session token can't attach to. Empty => system assigns the token's-session
+                    // desktop, so the process starts and the systray works.
+                    lpDesktop = "",
+                };
+                // --no-update: the SERVICE owns the agent's lifecycle. Without it the agent could
+                // self-update and re-exec, which the supervisor sees as an exit → transient double agent.
+                string cmdLine = $"\"{agentExePath}\" serve --no-update";
+                string workingDir = Path.GetDirectoryName(agentExePath) ?? Environment.SystemDirectory;
+                uint flags = CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW;
+
+                bool ok = CreateProcessAsUserW(
+                    token, null, cmdLine, IntPtr.Zero, IntPtr.Zero,
+                    false, flags, envBlock, workingDir, ref si, out PROCESS_INFORMATION pi);
+                if (!ok)
+                    throw new InvalidOperationException(
+                        $"CreateProcessAsUser failed for session {sessionId} (Win32 {Marshal.GetLastWin32Error()}).");
+
+                CloseHandle(pi.hThread);
+                return new LaunchedAgent(sessionId, pi.dwProcessId, pi.hProcess);
+            }
+            finally
+            {
+                DestroyEnvironmentBlock(envBlock);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Clone winlogon.exe's token in <paramref name="sessionId"/> as a primary token — a genuine
+    /// session-N SYSTEM token (winlogon runs as SYSTEM in every interactive session). SYSTEM already
+    /// has full winsta0\default access there, so no ACL surgery is needed.
+    /// </summary>
+    private static SafeAccessTokenHandle BuildSystemTokenForSession(uint sessionId)
+    {
+        int winlogonPid = FindWinlogonPid(sessionId)
+            ?? throw new InvalidOperationException($"No winlogon.exe in session {sessionId} (no interactive logon?).");
+
+        IntPtr hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)winlogonPid);
+        if (hProc == IntPtr.Zero)
+            throw new InvalidOperationException(
+                $"OpenProcess(winlogon pid {winlogonPid}) failed (Win32 {Marshal.GetLastWin32Error()}). The service must run as LocalSystem.");
+        try
+        {
+            if (!OpenProcessToken(hProc, TOKEN_DUPLICATE | TOKEN_QUERY, out SafeAccessTokenHandle winlogonToken))
+                throw new InvalidOperationException($"OpenProcessToken(winlogon) failed (Win32 {Marshal.GetLastWin32Error()}).");
+            using (winlogonToken)
+            {
+                if (!DuplicateTokenEx(winlogonToken, MAXIMUM_ALLOWED, IntPtr.Zero,
+                        SECURITY_IMPERSONATION_LEVEL.SecurityImpersonation, TOKEN_TYPE.TokenPrimary, out SafeAccessTokenHandle dup))
+                    throw new InvalidOperationException($"DuplicateTokenEx(winlogon) failed (Win32 {Marshal.GetLastWin32Error()}).");
+                return dup;
+            }
+        }
+        finally { CloseHandle(hProc); }
+    }
+
+    private static int? FindWinlogonPid(uint sessionId)
+    {
+        foreach (var p in Process.GetProcessesByName("winlogon"))
+        {
+            try { if ((uint)p.SessionId == sessionId) return p.Id; }
+            catch { /* access races */ }
+            finally { p.Dispose(); }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// FALLBACK launcher: register + run an on-demand scheduled task that starts <c>rdpeek-agent serve</c>
+    /// as the logged-on user of <paramref name="sessionId"/>, then find and wrap the agent process so
     /// its exit can be watched. Throws if the session has no resolvable user, if schtasks fails,
     /// or if the agent process never appears.
     /// </summary>
-    public static LaunchedAgent Launch(uint sessionId, string agentExePath)
+    public static LaunchedAgent LaunchViaTask(uint sessionId, string agentExePath)
     {
         string user = ResolveSessionUser(sessionId)
             ?? throw new InvalidOperationException($"Could not resolve the logged-on user for session {sessionId}.");
@@ -193,7 +284,7 @@ $@"<?xml version=""1.0"" encoding=""UTF-16""?>
   <Actions Context=""Author"">
     <Exec>
       <Command>{esc(command)}</Command>
-      <Arguments>serve</Arguments>
+      <Arguments>serve --no-update</Arguments>
       <WorkingDirectory>{esc(workingDir)}</WorkingDirectory>
     </Exec>
   </Actions>

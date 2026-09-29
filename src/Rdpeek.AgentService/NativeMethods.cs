@@ -1,20 +1,24 @@
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace Rdpeek.AgentService;
 
 // =====================================================================================
 //  WHY THIS FILE EXISTS
 // -------------------------------------------------------------------------------------
-//  A Windows Service runs in **Session 0**, which is isolated and has **no interactive
-//  RDP DVC**. So the service itself CANNOT open the diagnostics channel and cannot simply
-//  spawn the agent into a user session with CreateProcessAsUser either: anything a
-//  session-0 service creates in another session dies at desktop-attach (0xC0000142,
-//  verified). So the service delegates the actual launch to the **Task Scheduler**, which
-//  is the supported way to place a process in a user's session WITH its interactive
-//  desktop (so the agent's systray works). The P/Invokes below are just what's left:
-//    - WTSEnumerateSessions / WTSQuerySessionInformation : find active sessions + their user
-//    - OpenProcess / GetExitCodeProcess / TerminateProcess : monitor & stop the agent proc
-//  The task itself is registered/run/deleted via schtasks (see SessionLauncher).
+//  A Windows Service runs in **Session 0**, isolated with no interactive RDP DVC, so it
+//  must launch the agent INTO each interactive user session. There are two ways to do it,
+//  and the service uses both (native first, Task Scheduler as fallback):
+//
+//   * NATIVE (default): clone winlogon.exe's SYSTEM token in the target session and
+//     CreateProcessAsUser with an **empty lpDesktop**. The empty lpDesktop is the crux —
+//     passing "winsta0\default" from session 0 resolves against the caller's (session 0)
+//     window station and the child dies at desktop-attach (0xC0000142). Empty lets the
+//     system assign the token's-session desktop, where the agent's systray works.
+//   * TASK (fallback): register + run a per-session InteractiveToken scheduled task.
+//
+//  P/Invokes below serve both: session enumeration / user lookup, winlogon-token cloning +
+//  CreateProcessAsUser (native), and OpenProcess/GetExitCode/Terminate (monitor & stop).
 // =====================================================================================
 internal static class NativeMethods
 {
@@ -89,6 +93,69 @@ internal static class NativeMethods
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool CloseHandle(IntPtr hObject);
+
+    // ---- native in-session launch: clone a session token + CreateProcessAsUser ----
+
+    internal const uint TOKEN_DUPLICATE = 0x0002;
+    internal const uint TOKEN_QUERY = 0x0008;
+    internal const uint MAXIMUM_ALLOWED = 0x02000000;
+    internal const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
+    internal const uint CREATE_NO_WINDOW = 0x08000000;
+
+    internal enum SECURITY_IMPERSONATION_LEVEL { SecurityAnonymous, SecurityIdentification, SecurityImpersonation, SecurityDelegation }
+    internal enum TOKEN_TYPE { TokenPrimary = 1, TokenImpersonation }
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    internal static extern bool OpenProcessToken(IntPtr ProcessHandle, uint DesiredAccess, out SafeAccessTokenHandle TokenHandle);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    internal static extern bool DuplicateTokenEx(
+        SafeAccessTokenHandle hExistingToken, uint dwDesiredAccess, IntPtr lpTokenAttributes,
+        SECURITY_IMPERSONATION_LEVEL ImpersonationLevel, TOKEN_TYPE TokenType, out SafeAccessTokenHandle phNewToken);
+
+    [DllImport("userenv.dll", SetLastError = true)]
+    internal static extern bool CreateEnvironmentBlock(out IntPtr lpEnvironment, SafeAccessTokenHandle hToken, bool bInherit);
+
+    [DllImport("userenv.dll", SetLastError = true)]
+    internal static extern bool DestroyEnvironmentBlock(IntPtr lpEnvironment);
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct STARTUPINFO
+    {
+        public int cb;
+        public string? lpReserved;
+        public string? lpDesktop;   // EMPTY = system-assigns the token's-session desktop (the 0xC0000142 fix)
+        public string? lpTitle;
+        public int dwX, dwY, dwXSize, dwYSize, dwXCountChars, dwYCountChars, dwFillAttribute;
+        public int dwFlags;
+        public short wShowWindow;
+        public short cbReserved2;
+        public IntPtr lpReserved2;
+        public IntPtr hStdInput, hStdOutput, hStdError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct PROCESS_INFORMATION
+    {
+        public IntPtr hProcess;
+        public IntPtr hThread;
+        public int dwProcessId;
+        public int dwThreadId;
+    }
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    internal static extern bool CreateProcessAsUserW(
+        SafeAccessTokenHandle hToken,
+        string? lpApplicationName,
+        string lpCommandLine,
+        IntPtr lpProcessAttributes,
+        IntPtr lpThreadAttributes,
+        bool bInheritHandles,
+        uint dwCreationFlags,
+        IntPtr lpEnvironment,
+        string? lpCurrentDirectory,
+        ref STARTUPINFO lpStartupInfo,
+        out PROCESS_INFORMATION lpProcessInformation);
 
     /// <summary>Query a single string session-info value (e.g. user name), or null.</summary>
     internal static string? QuerySessionString(uint sessionId, WTS_INFO_CLASS info)
